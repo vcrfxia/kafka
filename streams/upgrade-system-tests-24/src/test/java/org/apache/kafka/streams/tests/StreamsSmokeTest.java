@@ -16,7 +16,6 @@
  */
 package org.apache.kafka.streams.tests;
 
-import org.apache.kafka.common.utils.Exit;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.StreamsConfig;
 
@@ -41,7 +40,7 @@ public class StreamsSmokeTest {
     public static void main(final String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("StreamsSmokeTest are expecting two parameters: propFile, command; but only see " + args.length + " parameter");
-            Exit.exit(1);
+            System.exit(1);
         }
 
         final String propFileName = args[0];
@@ -54,18 +53,17 @@ public class StreamsSmokeTest {
 
         if (kafka == null) {
             System.err.println("No bootstrap kafka servers specified in " + StreamsConfig.BOOTSTRAP_SERVERS_CONFIG);
-            Exit.exit(1);
+            System.exit(1);
         }
 
         if ("process".equals(command)) {
             if (!StreamsConfig.AT_LEAST_ONCE.equals(processingGuarantee) &&
-                !StreamsConfig.EXACTLY_ONCE.equals(processingGuarantee) &&
-                !StreamsConfig.EXACTLY_ONCE_BETA.equals(processingGuarantee)) {
+                !StreamsConfig.EXACTLY_ONCE.equals(processingGuarantee)) {
 
-                System.err.println("processingGuarantee must be either " + StreamsConfig.AT_LEAST_ONCE + ", " +
-                    StreamsConfig.EXACTLY_ONCE + ", or " + StreamsConfig.EXACTLY_ONCE_BETA);
+                System.err.println("processingGuarantee must be either " + StreamsConfig.AT_LEAST_ONCE + " or " +
+                    StreamsConfig.EXACTLY_ONCE);
 
-                Exit.exit(1);
+                System.exit(1);
             }
         }
 
@@ -92,10 +90,6 @@ public class StreamsSmokeTest {
             case "process":
                 // this starts the stream processing app
                 new SmokeTestClient(UUID.randomUUID().toString()).start(streamsProperties);
-                break;
-            case "close-deadlock-test":
-                final ShutdownDeadlockTest test = new ShutdownDeadlockTest(kafka);
-                test.start();
                 break;
             default:
                 System.out.println("unknown command: " + command);
