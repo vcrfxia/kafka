@@ -225,7 +225,7 @@ public abstract class AbstractDualSchemaRocksDBSegmentedBytesStore<S extends Seg
         this.positionCheckpoint = new OffsetCheckpoint(positionCheckpointFile);
         this.position = StoreQueryUtils.readPositionFromCheckpoint(positionCheckpoint);
 
-        // register and possibly restore the state from the logs
+        // register and possibly restore the state from the logs -- TODO: I think this is the "registering" step which is skipped by KeyValueSegment
         stateStoreContext.register(
             root,
             (RecordBatchingStateRestoreCallback) this::restoreAllInternal,

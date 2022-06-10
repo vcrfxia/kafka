@@ -49,7 +49,7 @@ public class RocksDbIndexedTimeOrderedWindowBytesStoreSupplier implements Window
         final String wsMsgPrefix = prepareMillisCheckFailMsgPrefix(windowSize, "windowSize");
         final long windowSizeMs = validateMillisecondDuration(windowSize, wsMsgPrefix);
 
-        final long defaultSegmentInterval = Math.max(retentionMs / 2, 60_000L);
+        final long defaultSegmentInterval = Math.max(retentionMs / 2, 60_000L); // TODO: here is calculation for default segment interval
 
         if (retentionMs < 0L) {
             throw new IllegalArgumentException("retentionPeriod cannot be negative");

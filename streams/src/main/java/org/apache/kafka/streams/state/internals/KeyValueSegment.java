@@ -54,7 +54,7 @@ class KeyValueSegment extends RocksDBStore implements Comparable<KeyValueSegment
     @Override
     public void openDB(final Map<String, Object> configs, final File stateDir) {
         super.openDB(configs, stateDir);
-        // skip the registering step
+        // skip the registering step -- TODO: what is this step?
     }
 
     @Override
