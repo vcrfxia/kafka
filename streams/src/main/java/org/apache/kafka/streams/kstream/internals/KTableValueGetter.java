@@ -25,5 +25,10 @@ public interface KTableValueGetter<K, V> {
 
     ValueAndTimestamp<V> get(K key);
 
+    default ValueAndTimestamp<V> get(K key, long timestampTo) {
+        // TODO: update to either default to get(k) or remove get(k) from interface entirely
+        throw new UnsupportedOperationException();
+    }
+
     default void close() {}
 }

@@ -3,8 +3,10 @@ package org.apache.kafka.streams.state;
 import org.apache.kafka.streams.errors.InvalidStateStoreException;
 
 // TODO(note): ideally extend the interfaces KeyValueStore extends instead,
-// in order to update put() signatures to include timestamp
-public interface VersionedKeyValueStore<K, V> extends KeyValueStore<K, V> {
+// and update put() signatures to include timestamp. until then, extend
+// TimestampedKeyValueStore instead so timestamp is accessible from
+// existing interfaces
+public interface VersionedKeyValueStore<K, V> extends TimestampedKeyValueStore<K, V> {
 
   /**
    * Get the value corresponding to this key, as of the provided timestamp.
@@ -15,7 +17,7 @@ public interface VersionedKeyValueStore<K, V> extends KeyValueStore<K, V> {
    * @throws NullPointerException       If null is used for key.
    * @throws InvalidStateStoreException if the store is not initialized
    */
-  V get(K key, long timestampTo);
+  ValueAndTimestamp<V> get(K key, long timestampTo);
 
   /**
    * Get an iterator over a given range of keys, as of the provided timestamp.
@@ -34,7 +36,7 @@ public interface VersionedKeyValueStore<K, V> extends KeyValueStore<K, V> {
    * @return The iterator for this range, from smallest to largest bytes.
    * @throws InvalidStateStoreException if the store is not initialized
    */
-  KeyValueIterator<K, V> range(K from, K to, long timestampTo);
+  KeyValueIterator<K, ValueAndTimestamp<V>> range(K from, K to, long timestampTo);
 
   /**
    * Get a reverse iterator over a given range of keys, as of the provided timestamp.
@@ -51,7 +53,7 @@ public interface VersionedKeyValueStore<K, V> extends KeyValueStore<K, V> {
    * @return The reverse iterator for this range, from largest to smallest key bytes.
    * @throws InvalidStateStoreException if the store is not initialized
    */
-  default KeyValueIterator<K, V> reverseRange(K from, K to, long timestampTo) {
+  default KeyValueIterator<K, ValueAndTimestamp<V>> reverseRange(K from, K to, long timestampTo) {
     throw new UnsupportedOperationException();
   }
 
@@ -66,7 +68,7 @@ public interface VersionedKeyValueStore<K, V> extends KeyValueStore<K, V> {
    * @return An iterator of all key/value pairs in the store, from smallest to largest bytes.
    * @throws InvalidStateStoreException if the store is not initialized
    */
-  KeyValueIterator<K, V> all(long timestampTo);
+  KeyValueIterator<K, ValueAndTimestamp<V>> all(long timestampTo);
 
   /**
    * Return a reverse iterator over all keys in this store, as of the provided timestamp.
@@ -79,7 +81,7 @@ public interface VersionedKeyValueStore<K, V> extends KeyValueStore<K, V> {
    * @return An reverse iterator of all key/value pairs in the store, from largest to smallest key bytes.
    * @throws InvalidStateStoreException if the store is not initialized
    */
-  default KeyValueIterator<K, V> reverseAll(long timestampTo) {
+  default KeyValueIterator<K, ValueAndTimestamp<V>> reverseAll(long timestampTo) {
     throw new UnsupportedOperationException();
   }
 

@@ -35,6 +35,7 @@ import static org.apache.kafka.streams.processor.internals.metrics.StreamsMetric
  * @param <K>
  * @param <V>
  */
+// TODO: here. I think we should create a version of this class which is versioned and essentially a passthrough, rather than adding another layer of value+timestamp
 public class MeteredTimestampedKeyValueStore<K, V>
     extends MeteredKeyValueStore<K, ValueAndTimestamp<V>> 
     implements TimestampedKeyValueStore<K, V> {

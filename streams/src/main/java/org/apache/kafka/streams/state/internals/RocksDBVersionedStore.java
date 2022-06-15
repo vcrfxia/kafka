@@ -20,6 +20,7 @@ import org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl;
 import org.apache.kafka.streams.processor.internals.metrics.TaskMetrics;
 import org.apache.kafka.streams.query.Position;
 import org.apache.kafka.streams.state.KeyValueIterator;
+import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,83 +55,83 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     }
 
     @Override
-    public void put(final Bytes key, final byte[] value) { // TODO: interface needs timestamp
+    public void put(final Bytes key, final ValueAndTimestamp<byte[]> value) { // TODO: interface needs timestamp
         // TODO: complicated logic here. see AbstractDualSchemaRocksDBSegmentedBytesStore for inspiration
     }
 
     @Override
-    public byte[] putIfAbsent(final Bytes key, final byte[] value) {
+    public ValueAndTimestamp<byte[]> putIfAbsent(final Bytes key, final ValueAndTimestamp<byte[]> value) {
         // TODO: segmented stores don't have this (comes from KeyValueStore)
         return null;
     }
 
     @Override
-    public void putAll(final List<KeyValue<Bytes, byte[]>> entries) {
+    public void putAll(final List<KeyValue<Bytes, ValueAndTimestamp<byte[]>>> entries) {
         // TODO: segmented stores don't have this (comes from KeyValueStore)
     }
 
     @Override
-    public byte[] delete(final Bytes key) {
+    public ValueAndTimestamp<byte[]> delete(final Bytes key) {
         // TODO: segmented store equivalent of this (comes from KeyValueStore) is remove()
         return null;
     }
 
     @Override
-    public byte[] get(final Bytes key) {
+    public ValueAndTimestamp<byte[]> get(final Bytes key) {
         // TODO: see AbstractDualSchemaRocksDBSegmentedBytesStore for inspiration
         return null;
     }
 
     @Override
-    public byte[] get(final Bytes key, final long timestampTo) {
+    public ValueAndTimestamp<byte[]> get(final Bytes key, final long timestampTo) {
         // TODO
         return null;
     }
 
     @Override
-    public KeyValueIterator<Bytes, byte[]> range(final Bytes from, final Bytes to) {
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> range(final Bytes from, final Bytes to) {
         // TODO
         return null;
     }
 
     @Override
-    public KeyValueIterator<Bytes, byte[]> range(final Bytes from, final Bytes to, final long timestampTo) {
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> range(final Bytes from, final Bytes to, final long timestampTo) {
         // TODO
         return null;
     }
 
     @Override
-    public KeyValueIterator<Bytes, byte[]> reverseRange(final Bytes from, final Bytes to) {
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseRange(final Bytes from, final Bytes to) {
         // TODO
         return null;
     }
 
     @Override
-    public KeyValueIterator<Bytes, byte[]> reverseRange(final Bytes from, final Bytes to, final long timestampTo) {
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseRange(final Bytes from, final Bytes to, final long timestampTo) {
         // TODO
         return null;
     }
 
     @Override
-    public KeyValueIterator<Bytes, byte[]> all() {
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> all() {
         // TODO
         return null;
     }
 
     @Override
-    public KeyValueIterator<Bytes, byte[]> all(final long timestampTo) {
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> all(final long timestampTo) {
         // TODO
         return null;
     }
 
     @Override
-    public KeyValueIterator<Bytes, byte[]> reverseAll() {
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseAll() {
         // TODO
         return null;
     }
 
     @Override
-    public KeyValueIterator<Bytes, byte[]> reverseAll(final long timestampTo) {
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseAll(final long timestampTo) {
         // TODO
         return null;
     }

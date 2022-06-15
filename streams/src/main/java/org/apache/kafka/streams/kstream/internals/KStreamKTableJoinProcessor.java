@@ -83,7 +83,7 @@ class KStreamKTableJoinProcessor<K1, K2, V1, V2, VOut> extends ContextualProcess
             }
             droppedRecordsSensor.record();
         } else {
-            final V2 value2 = getValueOrNull(valueGetter.get(mappedKey));
+            final V2 value2 = getValueOrNull(valueGetter.get(mappedKey, record.timestamp()));
             if (leftJoin || value2 != null) {
                 context().forward(record.withValue(joiner.apply(record.key(), record.value(), value2)));
             }
