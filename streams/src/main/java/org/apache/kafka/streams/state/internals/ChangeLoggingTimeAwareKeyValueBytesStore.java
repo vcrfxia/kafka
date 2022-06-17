@@ -1,0 +1,120 @@
+package org.apache.kafka.streams.state.internals;
+
+import static org.apache.kafka.streams.processor.internals.ProcessorContextUtils.asInternalProcessorContext;
+
+import java.util.List;
+import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.common.utils.Bytes;
+import org.apache.kafka.streams.KeyValue;
+import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.processor.StateStore;
+import org.apache.kafka.streams.processor.StateStoreContext;
+import org.apache.kafka.streams.processor.internals.InternalProcessorContext;
+import org.apache.kafka.streams.state.KeyValueIterator;
+import org.apache.kafka.streams.state.TimestampedKeyValueStore;
+import org.apache.kafka.streams.state.ValueAndTimestamp;
+
+public class ChangeLoggingTimeAwareKeyValueBytesStore
+        extends WrappedStateStore<TimestampedKeyValueStore<Bytes, byte[]>, byte[], ValueAndTimestamp<byte[]>>
+        implements TimestampedKeyValueStore<Bytes, byte[]> {
+
+    InternalProcessorContext context;
+
+    ChangeLoggingTimeAwareKeyValueBytesStore(final TimestampedKeyValueStore<Bytes, byte[]> inner) {
+        super(inner);
+    }
+
+    @Deprecated
+    @Override
+    public void init(final ProcessorContext context,
+                     final StateStore root) {
+        this.context = asInternalProcessorContext(context);
+        super.init(context, root);
+        // TODO: this used to set an eviction listener. is that still needed?
+    }
+
+    @Override
+    public void init(final StateStoreContext context,
+                     final StateStore root) {
+        this.context = asInternalProcessorContext(context);
+        super.init(context, root);
+        // TODO: this used to set an eviction listener. is that still needed?
+    }
+
+    @Override
+    public long approximateNumEntries() {
+        return wrapped().approximateNumEntries();
+    }
+
+    @Override
+    public void put(final Bytes key,
+                    final ValueAndTimestamp<byte[]> value) {
+        wrapped().put(key, value);
+        log(key, value);
+    }
+
+    @Override
+    public ValueAndTimestamp<byte[]> putIfAbsent(final Bytes key,
+                              final ValueAndTimestamp<byte[]> value) {
+        final ValueAndTimestamp<byte[]> previous = wrapped().putIfAbsent(key, value);
+        if (previous == null) {
+            // then it was absent
+            log(key, value);
+        }
+        return previous;
+    }
+
+    @Override
+    public void putAll(final List<KeyValue<Bytes, ValueAndTimestamp<byte[]>>> entries) {
+        wrapped().putAll(entries);
+        for (final KeyValue<Bytes, ValueAndTimestamp<byte[]>> entry : entries) {
+            log(entry.key, entry.value);
+        }
+    }
+
+    @Override
+    public <PS extends Serializer<P>, P> KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> prefixScan(final P prefix,
+                                                                                    final PS prefixKeySerializer) {
+        return wrapped().prefixScan(prefix, prefixKeySerializer);
+    }
+
+    @Override
+    public ValueAndTimestamp<byte[]> delete(final Bytes key) {
+        final ValueAndTimestamp<byte[]> oldValue = wrapped().delete(key);
+        log(key, null);
+        return oldValue;
+    }
+
+    @Override
+    public ValueAndTimestamp<byte[]> get(final Bytes key) {
+        return wrapped().get(key);
+    }
+
+    @Override
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> range(final Bytes from,
+                                                 final Bytes to) {
+        return wrapped().range(from, to);
+    }
+
+    @Override
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseRange(final Bytes from,
+                                                        final Bytes to) {
+        return wrapped().reverseRange(from, to);
+    }
+
+    @Override
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> all() {
+        return wrapped().all();
+    }
+
+    @Override
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseAll() {
+        return wrapped().reverseAll();
+    }
+
+    void log(final Bytes key, final ValueAndTimestamp<byte[]> value) {
+        // TODO: here. update logic for changelogging
+        // TODO: also, is context.timestamp() always a valid way to get the timestamp? if so, is it preferrable to pass timestamp that way instead?
+        //context.logChange(name(), key, value, context.timestamp(), wrapped().getPosition());
+    }
+}

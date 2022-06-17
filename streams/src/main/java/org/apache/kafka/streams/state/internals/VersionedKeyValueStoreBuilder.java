@@ -45,6 +45,7 @@ public class VersionedKeyValueStoreBuilder<K, V>
     extends AbstractStoreBuilder<K, ValueAndTimestamp<V>, TimestampedKeyValueStore<K, V>> {
 
     private final TimestampedKeyValueBytesStoreSupplier storeSupplier;
+    private final Serde<V> innerValueSerde;
 
     public VersionedKeyValueStoreBuilder(final String name,
                                            final Serde<K> keySerde,
@@ -53,39 +54,40 @@ public class VersionedKeyValueStoreBuilder<K, V>
         super(
             name,
             keySerde,
-            valueSerde == null ? null : new ValueAndTimestampSerde<>(valueSerde), // TODO: should this wrapping be here? needs to correspond to where this constructor is called
+            null, // TODO(note): needs to be typed as if new ValueAndTimestampSerde<>(valueSerde) but we don't actually want this to be used, thus the null hack for now. consider updating the type required in AbstractStoreBuilder instead
             time);
+        this.innerValueSerde = valueSerde;
         this.storeSupplier = new RocksDBVersionedStoreSupplier(name);
     }
 
     @Override
     public TimestampedKeyValueStore<K, V> build() {
-        KeyValueStore<Bytes, ValueAndTimestamp<byte[]>> store = storeSupplier.get();
-        return new MeteredKeyValueStore<>( // TODO: here
+        TimestampedKeyValueStore<Bytes, byte[]> store = storeSupplier.get();
+        return new MeteredTimeAwareKeyValueStore<>(
             maybeWrapCaching(maybeWrapLogging(store)),
             storeSupplier.metricsScope(),
             time,
             keySerde,
-            valueSerde);
+            innerValueSerde);
     }
 
-    private KeyValueStore<Bytes, ValueAndTimestamp<byte[]>> maybeWrapCaching(final KeyValueStore<Bytes, ValueAndTimestamp<byte[]>> inner) {
+    private TimestampedKeyValueStore<Bytes, byte[]> maybeWrapCaching(final TimestampedKeyValueStore<Bytes, byte[]> inner) {
         if (!enableCaching) {
             return inner;
         }
-        return new CachingKeyValueStore(inner, true);
+        return new CachingTimeAwareKeyValueStore(inner);
     }
 
-    private KeyValueStore<Bytes, ValueAndTimestamp<byte[]>> maybeWrapLogging(final KeyValueStore<Bytes, ValueAndTimestamp<byte[]>> inner) {
+    private TimestampedKeyValueStore<Bytes, byte[]> maybeWrapLogging(final TimestampedKeyValueStore<Bytes, byte[]> inner) {
         if (!enableLogging) {
             return inner;
         }
-        return new ChangeLoggingTimestampedKeyValueBytesStore(inner);
+        return new ChangeLoggingTimeAwareKeyValueBytesStore(inner);
     }
 
     // TODO(note): same as KeyValueBytesStoreSupplier except with ValueAndTimestamp already present
     interface TimestampedKeyValueBytesStoreSupplier
-        extends StoreSupplier<KeyValueStore<Bytes, ValueAndTimestamp<byte[]>>> {
+        extends StoreSupplier<TimestampedKeyValueStore<Bytes, byte[]>> {
     }
 
     public class RocksDBVersionedStoreSupplier implements TimestampedKeyValueBytesStoreSupplier {
@@ -102,7 +104,7 @@ public class VersionedKeyValueStoreBuilder<K, V>
         }
 
         @Override
-        public KeyValueStore<Bytes, ValueAndTimestamp<byte[]>> get() {
+        public TimestampedKeyValueStore<Bytes, byte[]> get() {
             // TODO: do not hard code history retention
             return new RocksDBVersionedStore(name, metricsScope(), 300_000L, 150_000L);
         }

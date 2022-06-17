@@ -21,6 +21,7 @@ import org.apache.kafka.common.utils.CircularIterator;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl;
+import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.slf4j.Logger;
 
 import java.util.Collections;
@@ -358,11 +359,20 @@ public class ThreadCache {
     static class DirtyEntry {
         private final Bytes key;
         private final byte[] newValue;
+        private final ValueAndTimestamp<byte[]> newTimeAwareValue; // TODO: better solution
         private final LRUCacheEntry recordContext;
 
         DirtyEntry(final Bytes key, final byte[] newValue, final LRUCacheEntry recordContext) {
             this.key = key;
             this.newValue = newValue;
+            this.newTimeAwareValue = null;
+            this.recordContext = recordContext;
+        }
+
+        DirtyEntry(final Bytes key, final ValueAndTimestamp<byte[]> newTimeAwareValue, final LRUCacheEntry recordContext) {
+            this.key = key;
+            this.newValue = null;
+            this.newTimeAwareValue = newTimeAwareValue;
             this.recordContext = recordContext;
         }
 
@@ -372,6 +382,10 @@ public class ThreadCache {
 
         public byte[] newValue() {
             return newValue;
+        }
+
+        public ValueAndTimestamp<byte[]> newTimeAwareValue() {
+            return newTimeAwareValue;
         }
 
         public LRUCacheEntry entry() {
