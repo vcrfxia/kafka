@@ -55,8 +55,9 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     }
 
     @Override
-    public void put(final Bytes key, final ValueAndTimestamp<byte[]> value) { // TODO: interface needs timestamp
+    public void put(final Bytes key, final ValueAndTimestamp<byte[]> value) {
         // TODO: complicated logic here. see AbstractDualSchemaRocksDBSegmentedBytesStore for inspiration
+
     }
 
     @Override

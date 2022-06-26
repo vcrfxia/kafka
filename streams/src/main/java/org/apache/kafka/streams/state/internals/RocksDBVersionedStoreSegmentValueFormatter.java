@@ -1,0 +1,316 @@
+package org.apache.kafka.streams.state.internals;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * format: <next_timestamp> + <min_timestamp> + <list of <timestamp, value_size>, reverse-sorted by timestamp> + <list of values, forward-sorted by timestamp>
+ */
+final class RocksDBVersionedStoreSegmentValueFormatter {
+    private static final int TIMESTAMP_SIZE = 8;
+    private static final int VALUE_SIZE = 4;
+
+    static long getNextTimestamp(final byte[] segmentValue) {
+        return ByteBuffer.wrap(segmentValue).getLong(0);
+    }
+
+    static boolean isEmpty(final byte[] segmentValue) {
+        return segmentValue.length <= TIMESTAMP_SIZE;
+    }
+
+    // assumes not empty
+    static long getMinTimestamp(final byte[] segmentValue) {
+        return ByteBuffer.wrap(segmentValue).getLong(TIMESTAMP_SIZE);
+    }
+
+    static PartiallyDeserializedSegmentValue deserialize(final byte[] segmentValue) {
+        return new PartiallyDeserializedSegmentValue(segmentValue);
+    }
+
+    static PartiallyDeserializedSegmentValue newSegmentValueWithRecord(
+            final byte[] value, final long validFrom, final long validTo) {
+        return new PartiallyDeserializedSegmentValue(value, validFrom, validTo);
+    }
+
+    static PartiallyDeserializedSegmentValue newSegmentValueWithTombstone(final long timestamp) {
+        return new PartiallyDeserializedSegmentValue(timestamp);
+    }
+
+    static class PartiallyDeserializedSegmentValue {
+        private byte[] segmentValue;
+        private long nextTimestamp;
+        private long minTimestamp;
+        private boolean isEmpty;
+
+        private int deserIndex = -1; // inclusive. TODO: same as the length of the lists below minus one, until this is optimized to not eagerly truncate the lists
+        private List<TimestampAndValueSize> unpackedReversedTimestampAndValueSizes;
+        private List<Integer> cumulativeValueSizes; // ordered same as timestamp and value sizes (reverse time-sorted)
+
+        private PartiallyDeserializedSegmentValue(final byte[] segmentValue) {
+            this.segmentValue = segmentValue;
+            this.nextTimestamp =
+                RocksDBVersionedStoreSegmentValueFormatter.getNextTimestamp(segmentValue);
+            this.isEmpty = RocksDBVersionedStoreSegmentValueFormatter.isEmpty(segmentValue);
+            if (!isEmpty) {
+                this.minTimestamp =
+                    RocksDBVersionedStoreSegmentValueFormatter.getMinTimestamp(segmentValue);
+            }
+            resetDeserHelpers();
+        }
+
+        private PartiallyDeserializedSegmentValue(
+                final byte[] value, final long validFrom, final long validTo) {
+            initializeWithRecord(value, validFrom, validTo);
+        }
+
+        private PartiallyDeserializedSegmentValue(final long timestamp) {
+            this.nextTimestamp = timestamp;
+            this.segmentValue = ByteBuffer.allocate(TIMESTAMP_SIZE).putLong(nextTimestamp).array();
+            this.isEmpty = true;
+            resetDeserHelpers();
+        }
+
+        boolean isEmpty() {
+            return isEmpty;
+        }
+
+        // assumes not empty
+        // assumes minTimestamp <= timestamp < nextTimestamp
+        // returns record with found_ts <= timestamp < found_next_ts
+        SegmentSearchResult find(final long timestamp, boolean includeValue) {
+            if (isEmpty || timestamp < minTimestamp || timestamp >= nextTimestamp) {
+                throw new IllegalArgumentException(); // TODO: message
+            }
+
+            long currNextTimestamp = nextTimestamp;
+            long currTimestamp = 0L;
+            int currValueSize = 0;
+            int currIndex = 0;
+            int cumValueSize = 0;
+            while (currTimestamp != minTimestamp) {
+                if (currIndex <= deserIndex) {
+                    currTimestamp = unpackedReversedTimestampAndValueSizes.get(currIndex).timestamp;
+                    currValueSize = unpackedReversedTimestampAndValueSizes.get(currIndex).valueSize;
+                    cumValueSize = cumulativeValueSizes.get(currIndex);
+                } else {
+                    int timestampSegmentIndex = 2 * TIMESTAMP_SIZE + currIndex * (TIMESTAMP_SIZE + VALUE_SIZE);
+                    currTimestamp = ByteBuffer.wrap(segmentValue).getLong(timestampSegmentIndex);
+                    currValueSize = ByteBuffer.wrap(segmentValue).getInt(timestampSegmentIndex + TIMESTAMP_SIZE);
+                    cumValueSize += currValueSize;
+
+                    deserIndex = currIndex;
+                    unpackedReversedTimestampAndValueSizes.add(new TimestampAndValueSize(currTimestamp, currValueSize));
+                    cumulativeValueSizes.add(cumValueSize);
+                }
+
+                if (currTimestamp <= timestamp) {
+                    // found result
+                    if (includeValue) {
+                        byte[] value = new byte[currValueSize];
+                        int valueSegmentIndex = segmentValue.length - cumValueSize;
+                        System.arraycopy(segmentValue, valueSegmentIndex, value, 0, currValueSize);
+                        return new SegmentSearchResult(currIndex, currTimestamp, currNextTimestamp, value);
+                    } else {
+                        return new SegmentSearchResult(currIndex, currTimestamp, currNextTimestamp);
+                    }
+                }
+
+                // prep for next iteration
+                currNextTimestamp = currTimestamp;
+                currIndex++;
+            }
+
+            throw new IllegalStateException("Search in segment expected to find result but did not.");
+        }
+
+        // could be empty
+        void insertAsLatest(final long validFrom, final long validTo, final byte[] value) {
+            if (nextTimestamp > validFrom) {
+                // detected inconsistency edge case where older segment has [a,b) while newer store
+                // has [a,c), due to [b,c) having failed to write to newer store.
+                // remove entries from this store until the overlap is resolved. TODO: details
+            }
+
+            if (nextTimestamp != validFrom) {
+                // move nextTimestamp into list as tombstone and add new record on top
+                if (isEmpty) {
+                    initializeWithRecord(new byte[0], nextTimestamp, validFrom);
+                } else {
+                    insert(nextTimestamp, new byte[0], 0);
+                }
+                insert(validFrom, value, 0); // TODO: make more efficient by combining two insert()'s into one?
+            } else {
+                // nextTimestamp is moved into segment automatically as record is added on top
+                if (isEmpty) {
+                    initializeWithRecord(value, validFrom, validTo);
+                } else {
+                    insert(validFrom, value, 0);
+                }
+            }
+            // update nextTimestamp. TODO: make more efficient by removing second pass?
+            nextTimestamp = validTo;
+            ByteBuffer.wrap(segmentValue, 0, TIMESTAMP_SIZE).putLong(TIMESTAMP_SIZE, nextTimestamp); // TODO: is this putLong() with index usage correct, given the subarray wrapping before it?
+        }
+
+        // could be empty
+        // assumes valid insertion (timestamp < minTimestamp and insertion makes sense for segment)
+        void insertAsEarliest(final long timestamp, final byte[] value) {
+            if (isEmpty) {
+                initializeWithRecord(value, timestamp, nextTimestamp);
+            } else {
+                int lastIndex = find(minTimestamp, false).index;
+                insert(timestamp, value, lastIndex + 1);
+            }
+        }
+
+        // assumes not empty
+        // assumes index provided by caller is valid
+        // inserts new record in list so that the new record occupies the specified index
+        // assumes find() was just called on the segment, and index-1 was already deserialized
+        void insert(final long timestamp, final byte[] value, final int index) { // TODO: return type?
+            if (isEmpty || index > deserIndex + 1 || index < 0) {
+                throw new IllegalArgumentException("Must invoke find() to deserialize record before insert() at specific index.");
+            }
+
+            truncateDeserHelpersToIndex(index - 1);
+            unpackedReversedTimestampAndValueSizes.add(new TimestampAndValueSize(timestamp, value.length));
+            int prevCumValueSize = deserIndex == -1 ? 0 : cumulativeValueSizes.get(deserIndex);
+            cumulativeValueSizes.add(prevCumValueSize + value.length);
+            deserIndex++;
+
+            // update serialization and other props
+            int segmentTimestampIndex = 2 * TIMESTAMP_SIZE + index * (TIMESTAMP_SIZE + VALUE_SIZE);
+            segmentValue = ByteBuffer.allocate(segmentValue.length + TIMESTAMP_SIZE + VALUE_SIZE + value.length)
+                .put(segmentValue, 0, segmentTimestampIndex)
+                .putLong(timestamp)
+                .putInt(value.length)
+                .put(segmentValue, segmentTimestampIndex, segmentValue.length - segmentTimestampIndex - prevCumValueSize)
+                .put(value)
+                .put(segmentValue, segmentValue.length - prevCumValueSize, prevCumValueSize)
+                .array();
+
+            if (index == 0) {
+                minTimestamp = timestamp;
+                ByteBuffer.wrap(segmentValue, TIMESTAMP_SIZE, TIMESTAMP_SIZE).putLong(TIMESTAMP_SIZE, minTimestamp); // TODO: is this putLong() with index usage correct, given the subarray wrapping before it?
+            }
+        }
+
+        // assumes index provided by caller is valid (has existing record, and that this update makes sense)
+        // assumes find() was just called on the segment, and this index was already deserialized
+        void updateRecord(final long timestamp, final byte[] value, final int index) {
+            if (index > deserIndex || index < 0) {
+                throw new IllegalArgumentException("Must invoke find() to deserialize record before updateRecord().");
+            }
+
+            int oldValueSize = unpackedReversedTimestampAndValueSizes.get(index).valueSize;
+            int oldCumValueSize = cumulativeValueSizes.get(index);
+
+            unpackedReversedTimestampAndValueSizes.set(index, new TimestampAndValueSize(timestamp, value.length));
+            cumulativeValueSizes.set(index, oldCumValueSize - oldValueSize + value.length);
+            truncateDeserHelpersToIndex(index); // TODO: technically only need to purge cumulativeValueSizes and not unpackedReversedTimestampAndValueSizes
+
+            // update serialization and other props
+            int segmentTimestampIndex = 2 * TIMESTAMP_SIZE + index * (TIMESTAMP_SIZE + VALUE_SIZE);
+            segmentValue = ByteBuffer.allocate(segmentValue.length - oldValueSize + value.length)
+            .put(segmentValue, 0, segmentTimestampIndex)
+            .putLong(timestamp)
+            .putInt(value.length)
+            .put(segmentValue, segmentTimestampIndex + TIMESTAMP_SIZE + VALUE_SIZE, segmentValue.length - (segmentTimestampIndex + TIMESTAMP_SIZE + VALUE_SIZE) - oldCumValueSize)
+            .put(value)
+            .put(segmentValue, segmentValue.length - oldCumValueSize + oldValueSize, oldCumValueSize - oldValueSize)
+            .array();
+
+            if (index == 0) {
+                minTimestamp = timestamp;
+                ByteBuffer.wrap(segmentValue, TIMESTAMP_SIZE, TIMESTAMP_SIZE).putLong(TIMESTAMP_SIZE, minTimestamp); // TODO: is this putLong() with index usage correct, given the subarray wrapping before it?
+            }
+        }
+
+        byte[] serialize() {
+            return segmentValue;
+        }
+
+        private void initializeWithRecord(final byte[] value, final long validFrom, final long validTo) {
+            this.nextTimestamp = validTo;
+            this.minTimestamp = validFrom;
+            this.segmentValue = ByteBuffer.allocate(TIMESTAMP_SIZE * 3 + VALUE_SIZE + value.length)
+                .putLong(nextTimestamp)
+                .putLong(minTimestamp)
+                .putLong(validFrom)
+                .putInt(value.length)
+                .put(value)
+                .array();
+            this.isEmpty = false;
+            resetDeserHelpers();
+        }
+
+        private void resetDeserHelpers() {
+            deserIndex = -1;
+            unpackedReversedTimestampAndValueSizes = new ArrayList<>(); // TODO: consider initializing to null instead
+            cumulativeValueSizes = new ArrayList<>();
+        }
+
+        // TODO: verify behavior, including for edge case where index = -1
+        private void truncateDeserHelpersToIndex(final int index) {
+            deserIndex = index;
+            unpackedReversedTimestampAndValueSizes.subList(index + 1, unpackedReversedTimestampAndValueSizes.size()).clear(); // TODO: check
+            cumulativeValueSizes.subList(index + 1, cumulativeValueSizes.size()).clear();
+        }
+
+        static class SegmentSearchResult {
+            private final int index;
+            private final long validFrom;
+            private final long validTo;
+            private final byte[] value;
+            private final boolean includesValue;
+
+            SegmentSearchResult(final int index, final long validFrom, final long validTo,
+                                final byte[] value) {
+                this.index = index;
+                this.validFrom = validFrom;
+                this.validTo = validTo;
+                this.value = value;
+                this.includesValue = true;
+            }
+
+            SegmentSearchResult(final int index, final long validFrom, final long validTo) {
+                this.index = index;
+                this.validFrom = validFrom;
+                this.validTo = validTo;
+                this.value = null;
+                this.includesValue = false;
+            }
+
+            int index() {
+                return index;
+            }
+
+            long validFrom() {
+                return validFrom;
+            }
+
+            long validTo() {
+                return validTo;
+            }
+
+            byte[] value() {
+                return value;
+            }
+
+            boolean includesValue() {
+                return includesValue;
+            }
+        }
+
+        private static class TimestampAndValueSize {
+            final long timestamp;
+            final int valueSize;
+
+            TimestampAndValueSize(final long timestamp, final int valueSize) {
+                this.timestamp = timestamp;
+                this.valueSize = valueSize;
+            }
+        }
+    }
+}
