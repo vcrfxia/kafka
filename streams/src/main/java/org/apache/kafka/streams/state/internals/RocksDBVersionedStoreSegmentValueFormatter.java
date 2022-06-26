@@ -24,20 +24,93 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
         return ByteBuffer.wrap(segmentValue).getLong(TIMESTAMP_SIZE);
     }
 
-    static PartiallyDeserializedSegmentValue deserialize(final byte[] segmentValue) {
+    static SegmentValue deserialize(final byte[] segmentValue) {
         return new PartiallyDeserializedSegmentValue(segmentValue);
     }
 
-    static PartiallyDeserializedSegmentValue newSegmentValueWithRecord(
-            final byte[] value, final long validFrom, final long validTo) {
+    static SegmentValue newSegmentValueWithRecord(
+        final byte[] value, final long validFrom, final long validTo) {
         return new PartiallyDeserializedSegmentValue(value, validFrom, validTo);
     }
 
-    static PartiallyDeserializedSegmentValue newSegmentValueWithTombstone(final long timestamp) {
+    static SegmentValue newSegmentValueWithTombstone(final long timestamp) {
         return new PartiallyDeserializedSegmentValue(timestamp);
     }
 
-    static class PartiallyDeserializedSegmentValue {
+    interface SegmentValue {
+        boolean isEmpty();
+
+        // assumes not empty
+        // assumes minTimestamp <= timestamp < nextTimestamp
+        // returns record with found_ts <= timestamp < found_next_ts
+        SegmentSearchResult find(long timestamp, boolean includeValue);
+
+        // could be empty
+        void insertAsLatest(long validFrom, long validTo, byte[] value);
+
+        // could be empty
+        // assumes valid insertion (timestamp < minTimestamp and insertion makes sense for segment)
+        void insertAsEarliest(long timestamp, byte[] value);
+
+        // assumes not empty
+        // assumes index provided by caller is valid
+        // inserts new record in list so that the new record occupies the specified index
+        // assumes find() was just called on the segment, and index-1 was already deserialized
+        void insert(long timestamp, byte[] value, int index);
+
+        // assumes index provided by caller is valid (has existing record, and that this update makes sense)
+        // assumes find() was just called on the segment, and this index was already deserialized
+        void updateRecord(long timestamp, byte[] value, int index);
+
+        byte[] serialize();
+
+        class SegmentSearchResult {
+            private final int index;
+            private final long validFrom;
+            private final long validTo;
+            private final byte[] value;
+            private final boolean includesValue;
+
+            SegmentSearchResult(final int index, final long validFrom, final long validTo,
+                                final byte[] value) {
+                this.index = index;
+                this.validFrom = validFrom;
+                this.validTo = validTo;
+                this.value = value;
+                this.includesValue = true;
+            }
+
+            SegmentSearchResult(final int index, final long validFrom, final long validTo) {
+                this.index = index;
+                this.validFrom = validFrom;
+                this.validTo = validTo;
+                this.value = null;
+                this.includesValue = false;
+            }
+
+            int index() {
+                return index;
+            }
+
+            long validFrom() {
+                return validFrom;
+            }
+
+            long validTo() {
+                return validTo;
+            }
+
+            byte[] value() {
+                return value;
+            }
+
+            boolean includesValue() {
+                return includesValue;
+            }
+        }
+    }
+
+    private static class PartiallyDeserializedSegmentValue implements SegmentValue {
         private byte[] segmentValue;
         private long nextTimestamp;
         private long minTimestamp;
@@ -71,14 +144,13 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
             resetDeserHelpers();
         }
 
-        boolean isEmpty() {
+        @Override
+        public boolean isEmpty() {
             return isEmpty;
         }
 
-        // assumes not empty
-        // assumes minTimestamp <= timestamp < nextTimestamp
-        // returns record with found_ts <= timestamp < found_next_ts
-        SegmentSearchResult find(final long timestamp, boolean includeValue) {
+        @Override
+        public SegmentSearchResult find(final long timestamp, final boolean includeValue) {
             if (isEmpty || timestamp < minTimestamp || timestamp >= nextTimestamp) {
                 throw new IllegalArgumentException(); // TODO: message
             }
@@ -124,8 +196,8 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
             throw new IllegalStateException("Search in segment expected to find result but did not.");
         }
 
-        // could be empty
-        void insertAsLatest(final long validFrom, final long validTo, final byte[] value) {
+        @Override
+        public void insertAsLatest(final long validFrom, final long validTo, final byte[] value) {
             if (nextTimestamp > validFrom) {
                 // detected inconsistency edge case where older segment has [a,b) while newer store
                 // has [a,c), due to [b,c) having failed to write to newer store.
@@ -153,9 +225,8 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
             ByteBuffer.wrap(segmentValue, 0, TIMESTAMP_SIZE).putLong(TIMESTAMP_SIZE, nextTimestamp); // TODO: is this putLong() with index usage correct, given the subarray wrapping before it?
         }
 
-        // could be empty
-        // assumes valid insertion (timestamp < minTimestamp and insertion makes sense for segment)
-        void insertAsEarliest(final long timestamp, final byte[] value) {
+        @Override
+        public void insertAsEarliest(final long timestamp, final byte[] value) {
             if (isEmpty) {
                 initializeWithRecord(value, timestamp, nextTimestamp);
             } else {
@@ -164,11 +235,8 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
             }
         }
 
-        // assumes not empty
-        // assumes index provided by caller is valid
-        // inserts new record in list so that the new record occupies the specified index
-        // assumes find() was just called on the segment, and index-1 was already deserialized
-        void insert(final long timestamp, final byte[] value, final int index) { // TODO: return type?
+        @Override
+        public void insert(final long timestamp, final byte[] value, final int index) { // TODO: return type?
             if (isEmpty || index > deserIndex + 1 || index < 0) {
                 throw new IllegalArgumentException("Must invoke find() to deserialize record before insert() at specific index.");
             }
@@ -196,9 +264,8 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
             }
         }
 
-        // assumes index provided by caller is valid (has existing record, and that this update makes sense)
-        // assumes find() was just called on the segment, and this index was already deserialized
-        void updateRecord(final long timestamp, final byte[] value, final int index) {
+        @Override
+        public void updateRecord(final long timestamp, final byte[] value, final int index) {
             if (index > deserIndex || index < 0) {
                 throw new IllegalArgumentException("Must invoke find() to deserialize record before updateRecord().");
             }
@@ -227,7 +294,8 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
             }
         }
 
-        byte[] serialize() {
+        @Override
+        public byte[] serialize() {
             return segmentValue;
         }
 
@@ -256,51 +324,6 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
             deserIndex = index;
             unpackedReversedTimestampAndValueSizes.subList(index + 1, unpackedReversedTimestampAndValueSizes.size()).clear(); // TODO: check
             cumulativeValueSizes.subList(index + 1, cumulativeValueSizes.size()).clear();
-        }
-
-        static class SegmentSearchResult {
-            private final int index;
-            private final long validFrom;
-            private final long validTo;
-            private final byte[] value;
-            private final boolean includesValue;
-
-            SegmentSearchResult(final int index, final long validFrom, final long validTo,
-                                final byte[] value) {
-                this.index = index;
-                this.validFrom = validFrom;
-                this.validTo = validTo;
-                this.value = value;
-                this.includesValue = true;
-            }
-
-            SegmentSearchResult(final int index, final long validFrom, final long validTo) {
-                this.index = index;
-                this.validFrom = validFrom;
-                this.validTo = validTo;
-                this.value = null;
-                this.includesValue = false;
-            }
-
-            int index() {
-                return index;
-            }
-
-            long validFrom() {
-                return validFrom;
-            }
-
-            long validTo() {
-                return validTo;
-            }
-
-            byte[] value() {
-                return value;
-            }
-
-            boolean includesValue() {
-                return includesValue;
-            }
         }
 
         private static class TimestampAndValueSize {
