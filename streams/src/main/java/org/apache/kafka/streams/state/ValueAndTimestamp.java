@@ -31,7 +31,7 @@ public final class ValueAndTimestamp<V> {
 
     private ValueAndTimestamp(final V value,
                               final long timestamp) {
-        Objects.requireNonNull(value);
+        Objects.requireNonNull(value); // TODO: the fact that this requires non-null is a problem for blindly using the put() interface from processor -- need to use delete() if the value is null, or ideally change the RocksDBVersionedStore interface to not use this
         this.value = value;
         this.timestamp = timestamp;
     }
