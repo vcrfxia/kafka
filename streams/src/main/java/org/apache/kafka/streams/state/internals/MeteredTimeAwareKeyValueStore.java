@@ -245,7 +245,7 @@ public class MeteredTimeAwareKeyValueStore<K, V>
                     final ValueAndTimestamp<V> value) {
         Objects.requireNonNull(key, "key cannot be null");
         try {
-            maybeMeasureLatency(() -> wrapped().put(keyBytes(key), innerValue(value)), time, putSensor);
+            maybeMeasureLatency(() -> wrapped().put(keyBytes(key), innerValue(value)), time, putSensor); // TODO(vxia): this is the problem
             maybeRecordE2ELatency();
         } catch (final ProcessorStateException e) {
             final String message = String.format(e.getMessage(), key, value);
@@ -348,8 +348,7 @@ public class MeteredTimeAwareKeyValueStore<K, V>
     }
 
     protected ValueAndTimestamp<byte[]> innerValue(final ValueAndTimestamp<V> value) {
-        // TODO: don't think this needs a null check, verify.
-        return ValueAndTimestamp.make(serdes.rawValue(value.value()), value.timestamp());
+        return value == null ? null : ValueAndTimestamp.make(serdes.rawValue(value.value()), value.timestamp());
     }
 
     protected Bytes keyBytes(final K key) {

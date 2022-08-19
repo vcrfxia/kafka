@@ -25,6 +25,7 @@ import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
 import org.apache.kafka.streams.state.internals.RocksDBVersionedStoreSegmentValueFormatter.SegmentValue;
 import org.apache.kafka.streams.state.internals.RocksDBVersionedStoreSegmentValueFormatter.SegmentValue.SegmentSearchResult;
+import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,6 +35,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
     private final String name;
     private final long historyRetention;
+    private final RocksDBMetricsRecorder metricsRecorder;
 
     private final RocksDBStore latestValueStore;
     private final KeyValueSegments segmentStores;
@@ -52,8 +54,9 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     RocksDBVersionedStore(final String name, final String metricsScope, final long historyRetention, final long segmentInterval) {
         this.name = name;
         this.historyRetention = historyRetention;
-        this.latestValueStore = new RocksDBStore(lvsName(name), metricsScope);
-        this.segmentStores = new KeyValueSegments(segmentsName(name), metricsScope, historyRetention, segmentInterval);
+        this.metricsRecorder = new RocksDBMetricsRecorder(metricsScope, name);
+        this.latestValueStore = new RocksDBStore(lvsName(name), "rocksdb", metricsRecorder); // TODO: dir name probably isn't right?
+        this.segmentStores = new KeyValueSegments(segmentsName(name), historyRetention, segmentInterval, metricsRecorder);
         this.latestValueSchema = new LatestValueSchema();
         this.segmentValueSchema = new SegmentValueSchema();
     }
@@ -61,7 +64,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     @Override
     public void put(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp) {
         // TODO: complicated logic here. see AbstractDualSchemaRocksDBSegmentedBytesStore for inspiration
-        final long timestamp = valueAndTimestamp.timestamp();
+        final long timestamp = valueAndTimestamp.timestamp(); // TODO: vxia(here) -- valueAndTimestamp is coming in as null right now, but that's not what we want
         observedStreamTime = Math.max(observedStreamTime, timestamp);
 
         // check latest value store
@@ -439,6 +442,10 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
             metrics
         );
 
+        metricsRecorder.init(ProcessorContextUtils.getMetricsImpl(context), context.taskId()); // TODO: where does this need to go? came from KeyValueSegments#openExisting()
+
+        latestValueStore.openDB(context.appConfigs(), context.stateDir()); // TODO: check
+        //latestValueStore.init(context, root);
         segmentStores.openExisting(context, observedStreamTime);
 
         final File positionCheckpointFile = new File(context.stateDir(), name() + ".position");

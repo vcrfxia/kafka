@@ -31,8 +31,16 @@ class KeyValueSegments extends AbstractSegments<KeyValueSegment> {
                      final String metricsScope,
                      final long retentionPeriod,
                      final long segmentInterval) {
+        this(name, retentionPeriod, segmentInterval,
+            new RocksDBMetricsRecorder(metricsScope, name));
+    }
+
+    KeyValueSegments(final String name,
+                     final long retentionPeriod,
+                     final long segmentInterval,
+                     final RocksDBMetricsRecorder metricsRecorder) {
         super(name, retentionPeriod, segmentInterval);
-        metricsRecorder = new RocksDBMetricsRecorder(metricsScope, name);
+        this.metricsRecorder = metricsRecorder;
     }
 
     @Override
@@ -55,7 +63,7 @@ class KeyValueSegments extends AbstractSegments<KeyValueSegment> {
 
     @Override
     public void openExisting(final ProcessorContext context, final long streamTime) {
-        metricsRecorder.init(ProcessorContextUtils.getMetricsImpl(context), context.taskId());
+        metricsRecorder.init(ProcessorContextUtils.getMetricsImpl(context), context.taskId()); // TODO: where does the equivalent of this need to go, for the latest value store in RocksDBVersionedStore?
         super.openExisting(context, streamTime);
     }
 }

@@ -830,10 +830,9 @@ public class KTableImpl<K, S, V> extends AbstractStream<K, V> implements KTable<
     public KTableValueGetterSupplier<K, V> valueGetterSupplier() {
         if (processorSupplier instanceof KTableSource) {
             final KTableSource<K, V> source = (KTableSource<K, V>) processorSupplier;
-            final boolean isVersioned = true; // TODO: do not hard code
             // whenever a source ktable is required for getter, it should be materialized
-            source.materialize(isVersioned);
-            return new KTableSourceValueGetterSupplier<>(source.queryableName(), isVersioned);
+            source.materialize();
+            return new KTableSourceValueGetterSupplier<>(source.queryableName()); // TODO: add logic here to figure out whether the table should be versioned or not, and return value getter accordingly?
         } else if (processorSupplier instanceof KStreamAggProcessorSupplier) {
             return ((KStreamAggProcessorSupplier<?, S, K, V>) processorSupplier).view();
         } else {
