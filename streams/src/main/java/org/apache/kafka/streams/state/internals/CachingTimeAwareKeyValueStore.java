@@ -268,7 +268,7 @@ public class CachingTimeAwareKeyValueStore
             }
             return rawValue;
         } else {
-            return ValueAndTimestamp.make(entry.value(), entry.context().timestamp());
+            return ValueAndTimestamp.make(entry.value(), entry.context().timestamp()); // TODO(note): the use of make() rather than makeAllowNullable() here assumes that the cache never contains (null, timestamp) entries, which is reasonable
         }
     }
 

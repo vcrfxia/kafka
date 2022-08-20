@@ -61,10 +61,11 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         this.segmentValueSchema = new SegmentValueSchema();
     }
 
+    // valueAndTimestamp should never come in as null, should always be a null wrapped with a timestamp
     @Override
     public void put(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp) {
         // TODO: complicated logic here. see AbstractDualSchemaRocksDBSegmentedBytesStore for inspiration
-        final long timestamp = valueAndTimestamp.timestamp(); // TODO: vxia(here) -- valueAndTimestamp is coming in as null right now, but that's not what we want
+        final long timestamp = valueAndTimestamp.timestamp();
         observedStreamTime = Math.max(observedStreamTime, timestamp);
 
         // check latest value store
@@ -263,6 +264,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     @Override
     public ValueAndTimestamp<byte[]> delete(final Bytes key) { // TODO: where is this called from? do we actually need the return value here?
         // TODO: segmented store equivalent of this (comes from KeyValueStore) is remove()
+        put(key, ValueAndTimestamp.makeAllowNullable(null, context.timestamp()));
         return null;
     }
 
@@ -475,8 +477,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     }
 
     private void restoreAllInternal(final Collection<ConsumerRecord<byte[], byte[]>> records) {
-        // TODO: this is a problem. requires reading from db before it is open, which
-        // is not allowed today
+        // TODO: this is a problem. requires reading from db before it is open, which is not allowed today
     }
 
     // TODO: convert to interface, move elsewhere, unify implementation with elsewhere?

@@ -171,8 +171,8 @@ public class MeteredTimeAwareKeyValueStore<K, V>
                 record -> listener.apply(
                     record.withKey(serdes.keyFrom(record.key()))
                         .withValue(new Change<>(
-                            ValueAndTimestamp.make(record.value().newValue.value() != null ? serdes.valueFrom(record.value().newValue.value()) : null, record.value().newValue.timestamp()), // TODO: assumes that nulls are still wrapped in ValueAndTimestamp with relevant timestamp. verify
-                            ValueAndTimestamp.make(record.value().oldValue.value() != null ? serdes.valueFrom(record.value().oldValue.value()) : null, record.value().oldValue.timestamp())
+                            ValueAndTimestamp.makeAllowNullable(record.value().newValue.value() != null ? serdes.valueFrom(record.value().newValue.value()) : null, record.value().newValue.timestamp()),
+                            ValueAndTimestamp.makeAllowNullable(record.value().oldValue.value() != null ? serdes.valueFrom(record.value().oldValue.value()) : null, record.value().oldValue.timestamp())
                         ))
                 ),
                 sendOldValues);
@@ -245,7 +245,7 @@ public class MeteredTimeAwareKeyValueStore<K, V>
                     final ValueAndTimestamp<V> value) {
         Objects.requireNonNull(key, "key cannot be null");
         try {
-            maybeMeasureLatency(() -> wrapped().put(keyBytes(key), innerValue(value)), time, putSensor); // TODO(vxia): this is the problem
+            maybeMeasureLatency(() -> wrapped().put(keyBytes(key), innerValue(value)), time, putSensor);
             maybeRecordE2ELatency();
         } catch (final ProcessorStateException e) {
             final String message = String.format(e.getMessage(), key, value);
@@ -348,7 +348,9 @@ public class MeteredTimeAwareKeyValueStore<K, V>
     }
 
     protected ValueAndTimestamp<byte[]> innerValue(final ValueAndTimestamp<V> value) {
-        return value == null ? null : ValueAndTimestamp.make(serdes.rawValue(value.value()), value.timestamp());
+        return value == null
+            ? ValueAndTimestamp.makeAllowNullable(null, context.timestamp()) // TODO: check that this is always populated
+            : ValueAndTimestamp.make(serdes.rawValue(value.value()), value.timestamp());
     }
 
     protected Bytes keyBytes(final K key) {

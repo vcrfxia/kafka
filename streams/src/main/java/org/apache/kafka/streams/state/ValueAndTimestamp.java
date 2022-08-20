@@ -30,8 +30,11 @@ public final class ValueAndTimestamp<V> {
     private final long timestamp;
 
     private ValueAndTimestamp(final V value,
-                              final long timestamp) {
-        Objects.requireNonNull(value); // TODO: the fact that this requires non-null is a problem for blindly using the put() interface from processor -- need to use delete() if the value is null, or ideally change the RocksDBVersionedStore interface to not use this
+                              final long timestamp,
+                              final boolean allowNullValue) {
+        if (!allowNullValue) { // TODO(note): hack to work around the fact that disallowing null values makes put() really annoying
+            Objects.requireNonNull(value);
+        }
         this.value = value;
         this.timestamp = timestamp;
     }
@@ -47,7 +50,12 @@ public final class ValueAndTimestamp<V> {
      */
     public static <V> ValueAndTimestamp<V> make(final V value,
                                                 final long timestamp) {
-        return value == null ? null : new ValueAndTimestamp<>(value, timestamp);
+        return value == null ? null : new ValueAndTimestamp<>(value, timestamp, false);
+    }
+
+    public static <V> ValueAndTimestamp<V> makeAllowNullable(
+        final V value, final long timestamp) {
+        return new ValueAndTimestamp<>(value, timestamp, true);
     }
 
     /**

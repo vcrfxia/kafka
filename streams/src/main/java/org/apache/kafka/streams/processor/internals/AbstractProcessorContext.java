@@ -188,7 +188,8 @@ public abstract class AbstractProcessorContext<KOut, VOut> implements InternalPr
             // in which case, we're preserving the pre-existing behavior
             // of returning dummy values when the record context is undefined.
             // For timestamp, the dummy value is `0L`.
-            return 0L;
+            throw new IllegalStateException("context timestamp is not populated"); // TODO: do not check in
+            //return 0L;
         } else {
             return recordContext.timestamp();
         }
