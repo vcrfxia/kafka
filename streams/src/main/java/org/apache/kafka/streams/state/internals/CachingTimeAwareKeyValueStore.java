@@ -29,13 +29,14 @@ import org.apache.kafka.streams.query.QueryResult;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.streams.state.VersionedKeyValueStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 // TODO: de-dup from CachingKeyValueStore
 public class CachingTimeAwareKeyValueStore
-    extends WrappedStateStore<TimestampedKeyValueStore<Bytes, byte[]>, byte[], ValueAndTimestamp<byte[]>>
-    implements TimestampedKeyValueStore<Bytes, byte[]>, CachedStateStore<byte[], ValueAndTimestamp<byte[]>> {
+    extends WrappedStateStore<VersionedKeyValueStore<Bytes, byte[]>, byte[], ValueAndTimestamp<byte[]>>
+    implements VersionedKeyValueStore<Bytes, byte[]>, CachedStateStore<byte[], ValueAndTimestamp<byte[]>> {
     // TODO: why does CachedStateStore use byte[] for key type, instead of Bytes?
     // TODO: is it preferable to create a new interface analogous to CachedStateStore instead?
 
@@ -49,7 +50,7 @@ public class CachingTimeAwareKeyValueStore
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Position position;
 
-    CachingTimeAwareKeyValueStore(final TimestampedKeyValueStore<Bytes, byte[]> inner) {
+    CachingTimeAwareKeyValueStore(final VersionedKeyValueStore<Bytes, byte[]> inner) {
         super(inner);
         position = Position.emptyPosition();
     }
@@ -251,6 +252,27 @@ public class CachingTimeAwareKeyValueStore
         }
     }
 
+    // TODO: de-dup from the other get(), and similarly for the others
+    @Override
+    public ValueAndTimestamp<byte[]> get(final Bytes key, final long timestampTo) {
+        Objects.requireNonNull(key, "key cannot be null");
+        validateStoreOpen();
+        final Lock theLock;
+        if (Thread.currentThread().equals(streamThread)) {
+            theLock = lock.writeLock();
+        } else {
+            theLock = lock.readLock();
+        }
+        theLock.lock();
+        try {
+            validateStoreOpen();
+            return getInternal(key, timestampTo);
+        } finally {
+            theLock.unlock();
+        }
+    }
+
+    // TODO: de-dup from below
     private ValueAndTimestamp<byte[]> getInternal(final Bytes key) {
         LRUCacheEntry entry = null;
         if (context.cache() != null) {
@@ -272,6 +294,28 @@ public class CachingTimeAwareKeyValueStore
         }
     }
 
+    private ValueAndTimestamp<byte[]> getInternal(final Bytes key, final long timestampTo) {
+        LRUCacheEntry entry = null;
+        if (context.cache() != null) {
+            entry = context.cache().get(cacheName, key);
+        }
+        if (entry != null && entry.context().timestamp() <= timestampTo) { // TODO: assumes that entry contains the latest record by timestamp
+            return ValueAndTimestamp.make(entry.value(), entry.context().timestamp()); // TODO(note): the use of make() rather than makeAllowNullable() here assumes that the cache never contains (null, timestamp) entries, which is reasonable
+        } else {
+            final ValueAndTimestamp<byte[]> rawValue = wrapped().get(key, timestampTo); // TODO: it'd be good to know whether this is the latest or not, in order to know whether to update the cache
+            if (rawValue == null) {
+                return null;
+            }
+            // only update the cache if this call is on the streamThread
+            // as we don't want other threads to trigger an eviction/flush
+            if (Thread.currentThread().equals(streamThread)) {
+                // TODO: can only do this if we know that it's actually the latest entry for the key
+                //context.cache().put(cacheName, key, new LRUCacheEntry(rawValue.value(), new RecordHeaders(), false, -1, rawValue.timestamp(), -1, "")); // TODO(note): hack to preserve timestamp
+            }
+            return rawValue;
+        }
+    }
+
     @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> range(final Bytes from,
                                                  final Bytes to) {
@@ -286,6 +330,24 @@ public class CachingTimeAwareKeyValueStore
         validateStoreOpen();
         final KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> storeIterator = wrapped().range(from, to);
         final ThreadCache.MemoryLRUCacheBytesIterator cacheIterator = context.cache().range(cacheName, from, to);
+        return new MergedSortedTimeAwareCacheKeyValueBytesStoreIterator(cacheIterator, storeIterator, true);
+    }
+
+    @Override
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> range(final Bytes from,
+                                                                    final Bytes to,
+                                                                    final long timestampTo) {
+        if (Objects.nonNull(from) && Objects.nonNull(to) && from.compareTo(to) > 0) {
+            LOG.warn("Returning empty iterator for fetch with invalid key range: from > to. " +
+                "This may be due to range arguments set in the wrong order, " +
+                "or serdes that don't preserve ordering when lexicographically comparing the serialized bytes. " +
+                "Note that the built-in numerical serdes do not follow this for negative numbers");
+            return KeyValueIterators.emptyIterator();
+        }
+
+        validateStoreOpen();
+        final KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> storeIterator = wrapped().range(from, to, timestampTo);
+        final ThreadCache.MemoryLRUCacheBytesIterator cacheIterator = context.cache().range(cacheName, from, to); // TODO: is there any benefit here? needs to be updated to be timestamp aware
         return new MergedSortedTimeAwareCacheKeyValueBytesStoreIterator(cacheIterator, storeIterator, true);
     }
 
@@ -307,11 +369,38 @@ public class CachingTimeAwareKeyValueStore
     }
 
     @Override
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseRange(final Bytes from,
+                                                                           final Bytes to,
+                                                                           final long timestampTo) {
+        if (Objects.nonNull(from) && Objects.nonNull(to) && from.compareTo(to) > 0) {
+            LOG.warn("Returning empty iterator for fetch with invalid key range: from > to. " +
+                "This may be due to range arguments set in the wrong order, " +
+                "or serdes that don't preserve ordering when lexicographically comparing the serialized bytes. " +
+                "Note that the built-in numerical serdes do not follow this for negative numbers");
+            return KeyValueIterators.emptyIterator();
+        }
+
+        validateStoreOpen();
+        final KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> storeIterator = wrapped().reverseRange(from, to, timestampTo);
+        final ThreadCache.MemoryLRUCacheBytesIterator cacheIterator = context.cache().reverseRange(cacheName, from, to); // TODO: same issue as above
+        return new MergedSortedTimeAwareCacheKeyValueBytesStoreIterator(cacheIterator, storeIterator, false);
+    }
+
+    @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> all() {
         validateStoreOpen();
         final KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> storeIterator =
             new DelegatingPeekingKeyValueIterator<>(this.name(), wrapped().all());
         final ThreadCache.MemoryLRUCacheBytesIterator cacheIterator = context.cache().all(cacheName);
+        return new MergedSortedTimeAwareCacheKeyValueBytesStoreIterator(cacheIterator, storeIterator, true);
+    }
+
+    @Override
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> all(final long timestampTo) {
+        validateStoreOpen();
+        final KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> storeIterator =
+            new DelegatingPeekingKeyValueIterator<>(this.name(), wrapped().all(timestampTo));
+        final ThreadCache.MemoryLRUCacheBytesIterator cacheIterator = context.cache().all(cacheName); // TODO: same issue
         return new MergedSortedTimeAwareCacheKeyValueBytesStoreIterator(cacheIterator, storeIterator, true);
     }
 
@@ -331,6 +420,15 @@ public class CachingTimeAwareKeyValueStore
         final KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> storeIterator =
             new DelegatingPeekingKeyValueIterator<>(this.name(), wrapped().reverseAll());
         final ThreadCache.MemoryLRUCacheBytesIterator cacheIterator = context.cache().reverseAll(cacheName);
+        return new MergedSortedTimeAwareCacheKeyValueBytesStoreIterator(cacheIterator, storeIterator, false);
+    }
+
+    @Override
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseAll(final long timestampTo) {
+        validateStoreOpen();
+        final KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> storeIterator =
+            new DelegatingPeekingKeyValueIterator<>(this.name(), wrapped().reverseAll(timestampTo));
+        final ThreadCache.MemoryLRUCacheBytesIterator cacheIterator = context.cache().reverseAll(cacheName); // TODO: same issue
         return new MergedSortedTimeAwareCacheKeyValueBytesStoreIterator(cacheIterator, storeIterator, false);
     }
 
@@ -387,5 +485,10 @@ public class CachingTimeAwareKeyValueStore
         } finally {
             lock.writeLock().unlock();
         }
+    }
+
+    @Override
+    public void deleteHistory(final long timestampTo) {
+        wrapped().deleteHistory(timestampTo);
     }
 }

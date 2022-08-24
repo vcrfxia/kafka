@@ -20,6 +20,7 @@ package org.apache.kafka.streams.kstream.internals;
 import org.apache.kafka.streams.processor.api.ProcessorContext;
 import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.streams.state.VersionedKeyValueStore;
 
 public class KTableSourceValueGetterSupplier<K, V> implements KTableValueGetterSupplier<K, V> {
     private final String storeName;
@@ -46,6 +47,15 @@ public class KTableSourceValueGetterSupplier<K, V> implements KTableValueGetterS
 
         public ValueAndTimestamp<V> get(final K key) {
             return store.get(key);
+        }
+
+        public ValueAndTimestamp<V> get(final K key, final long timestampTo) {
+            if (store instanceof VersionedKeyValueStore) {
+                return ((VersionedKeyValueStore<K, V>) store).get(key, timestampTo);
+            } else {
+                throw new UnsupportedOperationException(
+                    "Cannot call timestamped get() on non-versioned store.");
+            }
         }
     }
 }

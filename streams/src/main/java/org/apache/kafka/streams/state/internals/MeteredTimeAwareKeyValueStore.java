@@ -35,15 +35,15 @@ import org.apache.kafka.streams.query.QueryResult;
 import org.apache.kafka.streams.query.RangeQuery;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.StateSerdes;
-import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.streams.state.VersionedKeyValueStore;
 import org.apache.kafka.streams.state.internals.StoreQueryUtils.QueryHandler;
 import org.apache.kafka.streams.state.internals.metrics.StateStoreMetrics;
 
 // TODO: de-dup from MeteredKeyValueStore
 public class MeteredTimeAwareKeyValueStore<K, V>
-    extends WrappedStateStore<TimestampedKeyValueStore<Bytes, byte[]>, K, ValueAndTimestamp<V>>
-    implements TimestampedKeyValueStore<K, V> {
+    extends WrappedStateStore<VersionedKeyValueStore<Bytes, byte[]>, K, ValueAndTimestamp<V>>
+    implements VersionedKeyValueStore<K, V> {
 
     final Serde<K> keySerde;
     final Serde<V> valueSerde;
@@ -78,7 +78,7 @@ public class MeteredTimeAwareKeyValueStore<K, V>
             )
         );
 
-    MeteredTimeAwareKeyValueStore(final TimestampedKeyValueStore<Bytes, byte[]> inner,
+    MeteredTimeAwareKeyValueStore(final VersionedKeyValueStore<Bytes, byte[]> inner,
                                   final String metricsScope,
                                   final Time time,
                                   final Serde<K> keySerde,
@@ -165,7 +165,7 @@ public class MeteredTimeAwareKeyValueStore<K, V>
     @Override
     public boolean setFlushListener(final CacheFlushListener<K, ValueAndTimestamp<V>> listener,
                                     final boolean sendOldValues) {
-        final TimestampedKeyValueStore<Bytes, byte[]> wrapped = wrapped();
+        final VersionedKeyValueStore<Bytes, byte[]> wrapped = wrapped();
         if (wrapped instanceof CachedStateStore) {
             return ((CachedStateStore<byte[], ValueAndTimestamp<byte[]>>) wrapped).setFlushListener( // TODO: why is key here byte[] rather than Bytes?
                 record -> listener.apply(
@@ -241,6 +241,17 @@ public class MeteredTimeAwareKeyValueStore<K, V>
     }
 
     @Override
+    public ValueAndTimestamp<V> get(final K key, final long timestampTo) {
+        Objects.requireNonNull(key, "key cannot be null");
+        try {
+            return maybeMeasureLatency(() -> outerValue(wrapped().get(keyBytes(key), timestampTo)), time, getSensor);
+        } catch (final ProcessorStateException e) {
+            final String message = String.format(e.getMessage(), key);
+            throw new ProcessorStateException(message, e);
+        }
+    }
+
+    @Override
     public void put(final K key,
                     final ValueAndTimestamp<V> value) {
         Objects.requireNonNull(key, "key cannot be null");
@@ -302,6 +313,17 @@ public class MeteredTimeAwareKeyValueStore<K, V>
     }
 
     @Override
+    public KeyValueIterator<K, ValueAndTimestamp<V>> range(
+        final K from, final K to, final long timestampTo) {
+        final byte[] serFrom = from == null ? null : serdes.rawKey(from);
+        final byte[] serTo = to == null ? null : serdes.rawKey(to);
+        return new MeteredTimeAwareKeyValueIterator(
+            wrapped().range(Bytes.wrap(serFrom), Bytes.wrap(serTo), timestampTo),
+            rangeSensor
+        );
+    }
+
+    @Override
     public KeyValueIterator<K, ValueAndTimestamp<V>> reverseRange(final K from,
                                                final K to) {
         final byte[] serFrom = from == null ? null : serdes.rawKey(from);
@@ -313,13 +335,39 @@ public class MeteredTimeAwareKeyValueStore<K, V>
     }
 
     @Override
+    public KeyValueIterator<K, ValueAndTimestamp<V>> reverseRange(
+        final K from, final K to, final long timestampTo) {
+        final byte[] serFrom = from == null ? null : serdes.rawKey(from);
+        final byte[] serTo = to == null ? null : serdes.rawKey(to);
+        return new MeteredTimeAwareKeyValueIterator(
+            wrapped().reverseRange(Bytes.wrap(serFrom), Bytes.wrap(serTo), timestampTo),
+            rangeSensor
+        );
+    }
+
+    @Override
     public KeyValueIterator<K, ValueAndTimestamp<V>> all() {
         return new MeteredTimeAwareKeyValueIterator(wrapped().all(), allSensor);
     }
 
     @Override
+    public KeyValueIterator<K, ValueAndTimestamp<V>> all(final long timestampTo) {
+        return new MeteredTimeAwareKeyValueIterator(wrapped().all(timestampTo), allSensor);
+    }
+
+    @Override
     public KeyValueIterator<K, ValueAndTimestamp<V>> reverseAll() {
         return new MeteredTimeAwareKeyValueIterator(wrapped().reverseAll(), allSensor);
+    }
+
+    @Override
+    public KeyValueIterator<K, ValueAndTimestamp<V>> reverseAll(final long timestampTo) {
+        return new MeteredTimeAwareKeyValueIterator(wrapped().reverseAll(timestampTo), allSensor);
+    }
+
+    @Override
+    public void deleteHistory(final long timestampTo) {
+        wrapped().deleteHistory(timestampTo);
     }
 
     @Override

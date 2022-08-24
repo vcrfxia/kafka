@@ -11,16 +11,16 @@ import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.processor.internals.InternalProcessorContext;
 import org.apache.kafka.streams.state.KeyValueIterator;
-import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.streams.state.VersionedKeyValueStore;
 
 public class ChangeLoggingTimeAwareKeyValueBytesStore
-        extends WrappedStateStore<TimestampedKeyValueStore<Bytes, byte[]>, byte[], ValueAndTimestamp<byte[]>>
-        implements TimestampedKeyValueStore<Bytes, byte[]> {
+        extends WrappedStateStore<VersionedKeyValueStore<Bytes, byte[]>, byte[], ValueAndTimestamp<byte[]>>
+        implements VersionedKeyValueStore<Bytes, byte[]> {
 
     InternalProcessorContext context;
 
-    ChangeLoggingTimeAwareKeyValueBytesStore(final TimestampedKeyValueStore<Bytes, byte[]> inner) {
+    ChangeLoggingTimeAwareKeyValueBytesStore(final VersionedKeyValueStore<Bytes, byte[]> inner) {
         super(inner);
     }
 
@@ -91,9 +91,20 @@ public class ChangeLoggingTimeAwareKeyValueBytesStore
     }
 
     @Override
+    public ValueAndTimestamp<byte[]> get(final Bytes key, final long timestampTo) {
+        return wrapped().get(key, timestampTo);
+    }
+
+    @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> range(final Bytes from,
                                                  final Bytes to) {
         return wrapped().range(from, to);
+    }
+
+    @Override
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> range(
+        final Bytes from, final Bytes to, final long timestampTo) {
+        return wrapped().range(from, to, timestampTo);
     }
 
     @Override
@@ -103,13 +114,34 @@ public class ChangeLoggingTimeAwareKeyValueBytesStore
     }
 
     @Override
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseRange(
+        final Bytes from, final Bytes to, final long timestampTo) {
+        return wrapped().reverseRange(from, to, timestampTo);
+    }
+
+    @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> all() {
         return wrapped().all();
     }
 
     @Override
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> all(final long timestampTo) {
+        return wrapped().all(timestampTo);
+    }
+
+    @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseAll() {
         return wrapped().reverseAll();
+    }
+
+    @Override
+    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseAll(final long timestampTo) {
+        return wrapped().reverseAll(timestampTo);
+    }
+
+    @Override
+    public void deleteHistory(final long timestampTo) {
+        wrapped().deleteHistory(timestampTo);
     }
 
     void log(final Bytes key, final ValueAndTimestamp<byte[]> value) {

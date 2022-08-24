@@ -17,34 +17,18 @@
 package org.apache.kafka.streams.state.internals;
 
 import org.apache.kafka.common.serialization.Serde;
-import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.Time;
-import org.apache.kafka.streams.KeyValue;
-import org.apache.kafka.streams.processor.ProcessorContext;
-import org.apache.kafka.streams.processor.StateStore;
-import org.apache.kafka.streams.processor.StateStoreContext;
-import org.apache.kafka.streams.query.Position;
-import org.apache.kafka.streams.query.PositionBound;
-import org.apache.kafka.streams.query.Query;
-import org.apache.kafka.streams.query.QueryConfig;
-import org.apache.kafka.streams.query.QueryResult;
-import org.apache.kafka.streams.state.KeyValueBytesStoreSupplier;
-import org.apache.kafka.streams.state.KeyValueIterator;
-import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.StoreSupplier;
-import org.apache.kafka.streams.state.TimestampedBytesStore;
 import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
 
-import java.util.List;
-import java.util.Objects;
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
 
 public class VersionedKeyValueStoreBuilder<K, V>
     extends AbstractStoreBuilder<K, ValueAndTimestamp<V>, TimestampedKeyValueStore<K, V>> {
 
-    private final TimestampedKeyValueBytesStoreSupplier storeSupplier;
+    private final VersionedKeyValueBytesStoreSupplier storeSupplier;
     private final Serde<V> innerValueSerde;
 
     public VersionedKeyValueStoreBuilder(final String name,
@@ -61,8 +45,8 @@ public class VersionedKeyValueStoreBuilder<K, V>
     }
 
     @Override
-    public TimestampedKeyValueStore<K, V> build() {
-        TimestampedKeyValueStore<Bytes, byte[]> store = storeSupplier.get();
+    public VersionedKeyValueStore<K, V> build() {
+        VersionedKeyValueStore<Bytes, byte[]> store = storeSupplier.get();
         return new MeteredTimeAwareKeyValueStore<>(
             maybeWrapCaching(maybeWrapLogging(store)),
             storeSupplier.metricsScope(),
@@ -71,14 +55,14 @@ public class VersionedKeyValueStoreBuilder<K, V>
             innerValueSerde);
     }
 
-    private TimestampedKeyValueStore<Bytes, byte[]> maybeWrapCaching(final TimestampedKeyValueStore<Bytes, byte[]> inner) {
+    private VersionedKeyValueStore<Bytes, byte[]> maybeWrapCaching(final VersionedKeyValueStore<Bytes, byte[]> inner) {
         if (!enableCaching) {
             return inner;
         }
         return new CachingTimeAwareKeyValueStore(inner);
     }
 
-    private TimestampedKeyValueStore<Bytes, byte[]> maybeWrapLogging(final TimestampedKeyValueStore<Bytes, byte[]> inner) {
+    private VersionedKeyValueStore<Bytes, byte[]> maybeWrapLogging(final VersionedKeyValueStore<Bytes, byte[]> inner) {
         if (!enableLogging) {
             return inner;
         }
@@ -86,11 +70,11 @@ public class VersionedKeyValueStoreBuilder<K, V>
     }
 
     // TODO(note): same as KeyValueBytesStoreSupplier except with ValueAndTimestamp already present
-    interface TimestampedKeyValueBytesStoreSupplier
-        extends StoreSupplier<TimestampedKeyValueStore<Bytes, byte[]>> {
+    interface VersionedKeyValueBytesStoreSupplier
+        extends StoreSupplier<VersionedKeyValueStore<Bytes, byte[]>> {
     }
 
-    public class RocksDBVersionedStoreSupplier implements TimestampedKeyValueBytesStoreSupplier {
+    public class RocksDBVersionedStoreSupplier implements VersionedKeyValueBytesStoreSupplier {
 
         private final String name;
 
@@ -104,7 +88,7 @@ public class VersionedKeyValueStoreBuilder<K, V>
         }
 
         @Override
-        public TimestampedKeyValueStore<Bytes, byte[]> get() {
+        public VersionedKeyValueStore<Bytes, byte[]> get() {
             // TODO: do not hard code history retention
             return new RocksDBVersionedStore(name, metricsScope(), 300_000L, 150_000L);
         }
