@@ -4,6 +4,7 @@ import static org.apache.kafka.streams.StreamsConfig.InternalConfig.IQ_CONSISTEN
 
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -64,6 +65,12 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     // valueAndTimestamp should never come in as null, should always be a null wrapped with a timestamp
     @Override
     public void put(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp) {
+        LOG.info(String.format("vxia debug: put: key (%s), value (%s), ts (%d)",
+            key.toString(),
+            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
+            valueAndTimestamp.timestamp()
+        ));
+
         // TODO: complicated logic here. see AbstractDualSchemaRocksDBSegmentedBytesStore for inspiration
         final long timestamp = valueAndTimestamp.timestamp();
         observedStreamTime = Math.max(observedStreamTime, timestamp);
@@ -78,7 +85,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
                 final long segmentId = segmentStores.segmentId(timestamp);
                 final KeyValueSegment segment = segmentStores.getOrCreateSegmentIfLive(segmentId, context, observedStreamTime);
                 if (segment == null) {
-                    LOG.debug("Not moving existing latest value to segment for old update.");
+                    LOG.info("vxia debug: Not moving existing latest value to segment for old update.");
                 } else {
                     final byte[] foundValue = latestValueSchema.getValue(latestValue);
                     final byte[] segmentValueBytes = segment.get(key);
@@ -251,18 +258,38 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     }
 
     @Override
-    public ValueAndTimestamp<byte[]> putIfAbsent(final Bytes key, final ValueAndTimestamp<byte[]> value) { // TODO: where is this called from? do we actually need this?
+    public ValueAndTimestamp<byte[]> putIfAbsent(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp) { // TODO: where is this called from? do we actually need this?
+        LOG.info(String.format("vxia debug: putIfAbsent: key (%s), value (%s), ts (%d)",
+            key.toString(),
+            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
+            valueAndTimestamp.timestamp()
+        ));
+
         // TODO: segmented stores don't have this (comes from KeyValueStore)
         return null;
     }
 
     @Override
     public void putAll(final List<KeyValue<Bytes, ValueAndTimestamp<byte[]>>> entries) {
+        LOG.info("vxia debug: putAll:");
+        for (final KeyValue<Bytes, ValueAndTimestamp<byte[]>> entry : entries) {
+            LOG.info(String.format("vxia debug: \tkey (%s), value (%s), ts (%d)",
+                entry.key.toString(),
+                entry.value.value() == null ? "null" : Arrays.toString(entry.value.value()),
+                entry.value.timestamp()
+            ));
+        }
+
         // TODO: segmented stores don't have this (comes from KeyValueStore)
     }
 
     @Override
     public ValueAndTimestamp<byte[]> delete(final Bytes key) { // TODO: where is this called from? do we actually need the return value here?
+        LOG.info(String.format("vxia debug: delete: key (%s), ts (%d)",
+            key.toString(),
+            context.timestamp()
+        ));
+
         // TODO: segmented store equivalent of this (comes from KeyValueStore) is remove()
         put(key, ValueAndTimestamp.makeAllowNullable(null, context.timestamp()));
         return null;
@@ -270,6 +297,10 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
     @Override
     public ValueAndTimestamp<byte[]> get(final Bytes key) {
+        LOG.info(String.format("vxia debug: get: key (%s)",
+            key.toString()
+        ));
+
         // latest value is guaranteed to be present in the latest value store
         final byte[] latestValue = latestValueStore.get(key);
         if (latestValue != null) {
@@ -284,6 +315,11 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
     @Override
     public ValueAndTimestamp<byte[]> get(final Bytes key, final long timestampTo) {
+        LOG.info(String.format("vxia debug: get: key (%s), tsTo (%d)",
+            key.toString(),
+            timestampTo
+        ));
+
         // TODO: see AbstractDualSchemaRocksDBSegmentedBytesStore for inspiration
         // first check the latest value store
         final byte[] latestValue = latestValueStore.get(key);
@@ -332,54 +368,92 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
     @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> range(final Bytes from, final Bytes to) {
+        LOG.info(String.format("vxia debug: range: from (%s), to (%s)",
+            from.toString(),
+            to.toString()
+        ));
+
         // TODO
         return null;
     }
 
     @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> range(final Bytes from, final Bytes to, final long timestampTo) {
+        LOG.info(String.format("vxia debug: range: from (%s), to (%s), tsTo (%d)",
+            from.toString(),
+            to.toString(),
+            timestampTo
+        ));
+
         // TODO
         return null;
     }
 
     @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseRange(final Bytes from, final Bytes to) {
+        LOG.info(String.format("vxia debug: reverseRange: from (%s), to (%s)",
+            from.toString(),
+            to.toString()
+        ));
+
         // TODO
         return null;
     }
 
     @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseRange(final Bytes from, final Bytes to, final long timestampTo) {
+        LOG.info(String.format("vxia debug: reverseRange: from (%s), to (%s), tsTo (%d)",
+            from.toString(),
+            to.toString(),
+            timestampTo
+        ));
+
         // TODO
         return null;
     }
 
     @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> all() {
+        LOG.info("vxia debug: all");
+
         // TODO
         return null;
     }
 
     @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> all(final long timestampTo) {
+        LOG.info(String.format("vxia debug: all: tsTo (%d)",
+            timestampTo
+        ));
+
         // TODO
         return null;
     }
 
     @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseAll() {
+        LOG.info("vxia debug: reverseAll");
+
         // TODO
         return null;
     }
 
     @Override
     public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseAll(final long timestampTo) {
+        LOG.info(String.format("vxia debug: reverseAll: tsTo (%d)",
+            timestampTo
+        ));
+
         // TODO
         return null;
     }
 
     @Override
     public void deleteHistory(final long timestampTo) { // TODO: where is deleteHistory called from?
+        LOG.info(String.format("vxia debug: deleteHistory: tsTo (%d)",
+            timestampTo
+        ));
+
         // TODO: do we actually need to call explicit cleanup on segments?
         // cleanup is already called implicitly whenever getOrCreateSegmentIfLive() is called,
         // by using the stream time passed in with the call
@@ -396,12 +470,16 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
     @Override
     public void flush() {
+        LOG.info("vxia debug: flush");
+
         segmentStores.flush();
         latestValueStore.flush(); // TODO: inconsistency concern if second flush fails?
     }
 
     @Override
     public void close() {
+        LOG.info("vxia debug: close");
+
         open = false;
         latestValueStore.close(); // TODO: inconsistency concern with regards to order?
         segmentStores.close();
@@ -431,6 +509,8 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     @Deprecated
     @Override
     public void init(final ProcessorContext context, final StateStore root) {
+        LOG.info("vxia debug: init");
+
         // TODO(note): copied from AbstractDualSchemaRocksDBSegmentedBytesStore
         this.context = context;
 
