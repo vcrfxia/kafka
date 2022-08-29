@@ -106,6 +106,8 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
                 // update latest value store
                 if (valueAndTimestamp.value() != null) {
                     latestValueStore.put(key, latestValueSchema.from(valueAndTimestamp.value(), timestamp));
+                } else {
+                    latestValueStore.delete(key);
                 }
                 return;
             }
@@ -117,11 +119,11 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
             final byte[] segmentValue = segment.get(key);
             if (segmentValue != null) {
                 final long foundNextTs = segmentValueSchema.getNextTimestamp(segmentValue);
-                if (foundNextTs <= timestamp) { // TODO: this shouldn't actually happen because we filtered for segments based on timestamp
+                if (foundNextTs <= timestamp) {
                     // this segment (and all earlier segments) does not contain records affected by
                     // this put. insert into the tentativeSegmentId and conclude the procedure.
-                    // (same procedure as "insert into tentative segment" below, and then break)
-                    throw new IllegalStateException("should not find segment out of range for timestamp");
+                    // (break to use same procedure "insert into tentative segment" as below)
+                    break;
                 }
 
                 if (segmentValueSchema.isEmpty(segmentValue)) {
@@ -130,7 +132,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
                     final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
                     sv.insertAsEarliest(timestamp, valueAndTimestamp.value());
                     segment.put(key, sv.serialize());
-                    break;
+                    return;
                 }
 
                 final long minFoundTs = segmentValueSchema.getMinTimestamp(segmentValue);
@@ -168,7 +170,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
                         sv.insert(timestamp, valueAndTimestamp.value(), searchResult.index());
                         segment.put(key, sv.serialize());
                     }
-                    break;
+                    return;
                 }
 
                 // TODO: we can technically remove this
@@ -209,7 +211,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
                     sv.insertAsLatest(
                         segmentValueSchema.getNextTimestamp(segmentValue),
                         timestamp,
-                        null // TODO: hopefully this is fine, rather than byte[0]?
+                        new byte[0] // TODO(note): this needs to be byte[0] rather than null because value.length is called inside this method; will need to update if we need to distinguish between these
                     );
                     segment.put(key, sv.serialize());
                 }

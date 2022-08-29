@@ -222,7 +222,7 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
             }
             // update nextTimestamp. TODO: make more efficient by removing second pass?
             nextTimestamp = validTo;
-            ByteBuffer.wrap(segmentValue, 0, TIMESTAMP_SIZE).putLong(TIMESTAMP_SIZE, nextTimestamp); // TODO: is this putLong() with index usage correct, given the subarray wrapping before it?
+            ByteBuffer.wrap(segmentValue, 0, TIMESTAMP_SIZE).putLong(nextTimestamp); // TODO: is this putLong() correct, given the subarray wrapping before it?
         }
 
         @Override
