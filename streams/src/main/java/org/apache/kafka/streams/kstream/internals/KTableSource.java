@@ -118,7 +118,7 @@ public class KTableSource<KIn, VIn> implements ProcessorSupplier<KIn, VIn, KIn, 
             }
 
             if (queryableName != null) {
-                final ValueAndTimestamp<VIn> oldValueAndTimestamp = store.get(record.key());
+                final ValueAndTimestamp<VIn> oldValueAndTimestamp = store.get(record.key()); // TODO(note): this is calling get() before deciding to process data. should we update to allow this? backwards compatibility concerns.
                 final VIn oldValue;
                 if (oldValueAndTimestamp != null) {
                     oldValue = oldValueAndTimestamp.value();

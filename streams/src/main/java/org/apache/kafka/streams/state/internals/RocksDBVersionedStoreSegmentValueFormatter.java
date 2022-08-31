@@ -133,8 +133,8 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
         }
 
         private PartiallyDeserializedSegmentValue(
-                final byte[] value, final long validFrom, final long validTo) {
-            initializeWithRecord(value, validFrom, validTo);
+                final byte[] valueOrNull, final long validFrom, final long validTo) {
+            initializeWithRecord(translateFromNullable(valueOrNull), validFrom, validTo);
         }
 
         private PartiallyDeserializedSegmentValue(final long timestamp) {
@@ -179,10 +179,14 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
                 if (currTimestamp <= timestamp) {
                     // found result
                     if (includeValue) {
-                        byte[] value = new byte[currValueSize];
-                        int valueSegmentIndex = segmentValue.length - cumValueSize;
-                        System.arraycopy(segmentValue, valueSegmentIndex, value, 0, currValueSize);
-                        return new SegmentSearchResult(currIndex, currTimestamp, currNextTimestamp, value);
+                        if (currValueSize > 0) {
+                            byte[] value = new byte[currValueSize];
+                            int valueSegmentIndex = segmentValue.length - cumValueSize;
+                            System.arraycopy(segmentValue, valueSegmentIndex, value, 0, currValueSize);
+                            return new SegmentSearchResult(currIndex, currTimestamp, currNextTimestamp, value);
+                        } else {
+                            return new SegmentSearchResult(currIndex, currTimestamp, currNextTimestamp, null);
+                        }
                     } else {
                         return new SegmentSearchResult(currIndex, currTimestamp, currNextTimestamp);
                     }
@@ -197,11 +201,14 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
         }
 
         @Override
-        public void insertAsLatest(final long validFrom, final long validTo, final byte[] value) {
+        public void insertAsLatest(final long validFrom, final long validTo, final byte[] valueOrNull) {
+            final byte[] value = translateFromNullable(valueOrNull);
+
             if (nextTimestamp > validFrom) {
                 // detected inconsistency edge case where older segment has [a,b) while newer store
                 // has [a,c), due to [b,c) having failed to write to newer store.
                 // remove entries from this store until the overlap is resolved. TODO: details
+                throw new UnsupportedOperationException("case not yet implemented");
             }
 
             if (nextTimestamp != validFrom) {
@@ -226,7 +233,9 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
         }
 
         @Override
-        public void insertAsEarliest(final long timestamp, final byte[] value) {
+        public void insertAsEarliest(final long timestamp, final byte[] valueOrNull) {
+            final byte[] value = translateFromNullable(valueOrNull);
+
             if (isEmpty) {
                 initializeWithRecord(value, timestamp, nextTimestamp);
             } else {
@@ -236,11 +245,13 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
         }
 
         @Override
-        public void insert(final long timestamp, final byte[] value, final int index) { // TODO: return type?
+        public void insert(final long timestamp, final byte[] valueOrNull, final int index) { // TODO: return type?
             if (isEmpty || index > deserIndex + 1 || index < 0) {
                 throw new IllegalArgumentException("Must invoke find() to deserialize record before insert() at specific index.");
             }
+            final byte[] value = translateFromNullable(valueOrNull);
 
+            final boolean needsMinTsUpdate = isLastIndex(index - 1); // TODO(note): check first before updating info below
             truncateDeserHelpersToIndex(index - 1);
             unpackedReversedTimestampAndValueSizes.add(new TimestampAndValueSize(timestamp, value.length));
             int prevCumValueSize = deserIndex == -1 ? 0 : cumulativeValueSizes.get(deserIndex);
@@ -258,21 +269,27 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
                 .put(segmentValue, segmentValue.length - prevCumValueSize, prevCumValueSize)
                 .array();
 
-            if (index == 0) {
+            if (needsMinTsUpdate) {
+                if (minTimestamp <= timestamp) { // TODO: remove
+                    throw new IllegalStateException("insert as earliest has timestamp later than existing min timestamp");
+                }
+
                 minTimestamp = timestamp;
                 ByteBuffer.wrap(segmentValue, TIMESTAMP_SIZE, TIMESTAMP_SIZE).putLong(TIMESTAMP_SIZE, minTimestamp); // TODO: is this putLong() with index usage correct, given the subarray wrapping before it?
             }
         }
 
         @Override
-        public void updateRecord(final long timestamp, final byte[] value, final int index) {
+        public void updateRecord(final long timestamp, final byte[] valueOrNull, final int index) {
             if (index > deserIndex || index < 0) {
                 throw new IllegalArgumentException("Must invoke find() to deserialize record before updateRecord().");
             }
+            final byte[] value = translateFromNullable(valueOrNull);
 
             int oldValueSize = unpackedReversedTimestampAndValueSizes.get(index).valueSize;
             int oldCumValueSize = cumulativeValueSizes.get(index);
 
+            final boolean needsMinTsUpdate = isLastIndex(index); // TODO(note): check first before updating info below
             unpackedReversedTimestampAndValueSizes.set(index, new TimestampAndValueSize(timestamp, value.length));
             cumulativeValueSizes.set(index, oldCumValueSize - oldValueSize + value.length);
             truncateDeserHelpersToIndex(index); // TODO: technically only need to purge cumulativeValueSizes and not unpackedReversedTimestampAndValueSizes
@@ -288,7 +305,7 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
             .put(segmentValue, segmentValue.length - oldCumValueSize + oldValueSize, oldCumValueSize - oldValueSize)
             .array();
 
-            if (index == 0) {
+            if (needsMinTsUpdate) {
                 minTimestamp = timestamp;
                 ByteBuffer.wrap(segmentValue, TIMESTAMP_SIZE, TIMESTAMP_SIZE).putLong(TIMESTAMP_SIZE, minTimestamp); // TODO: is this putLong() with index usage correct, given the subarray wrapping before it?
             }
@@ -300,6 +317,10 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
         }
 
         private void initializeWithRecord(final byte[] value, final long validFrom, final long validTo) {
+            if (validFrom >= validTo) { // TODO: remove
+                throw new IllegalStateException("validFrom must be less than validTo");
+            }
+
             this.nextTimestamp = validTo;
             this.minTimestamp = validFrom;
             this.segmentValue = ByteBuffer.allocate(TIMESTAMP_SIZE * 3 + VALUE_SIZE + value.length)
@@ -324,6 +345,19 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
             deserIndex = index;
             unpackedReversedTimestampAndValueSizes.subList(index + 1, unpackedReversedTimestampAndValueSizes.size()).clear(); // TODO: check
             cumulativeValueSizes.subList(index + 1, cumulativeValueSizes.size()).clear();
+        }
+
+        private boolean isLastIndex(final int index) {
+            if (deserIndex == -1
+                || unpackedReversedTimestampAndValueSizes.get(deserIndex).timestamp != minTimestamp) {
+                return false;
+            }
+            return index == deserIndex;
+        }
+
+        // TODO: this needs to be updated if we want to distinguish between null and byte[0]
+        private static byte[] translateFromNullable(final byte[] valueOrNull) {
+            return valueOrNull == null ? new byte[0] : valueOrNull;
         }
 
         private static class TimestampAndValueSize {

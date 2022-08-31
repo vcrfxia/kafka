@@ -211,7 +211,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
                     sv.insertAsLatest(
                         segmentValueSchema.getNextTimestamp(segmentValue),
                         timestamp,
-                        new byte[0] // TODO(note): this needs to be byte[0] rather than null because value.length is called inside this method; will need to update if we need to distinguish between these
+                        null
                     );
                     segment.put(key, sv.serialize());
                 }
@@ -229,9 +229,16 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
             final byte[] segmentValue = segment.get(key);
             if (segmentValue == null) {
-                segment.put(key, segmentValueSchema.newSegmentValueWithRecord(
-                    valueAndTimestamp.value(), timestamp, foundTs
-                ).serialize());
+                if (valueAndTimestamp.value() != null) {
+                    segment.put(key, segmentValueSchema.newSegmentValueWithRecord(
+                        valueAndTimestamp.value(), timestamp, foundTs
+                    ).serialize());
+                } else {
+                    segment.put(
+                        key,
+                        segmentValueSchema.newSegmentValueWithTombstone(timestamp).serialize()
+                    );
+                }
             } else {
                 if (segmentValueSchema.isEmpty(segmentValue)
                     && segmentValueSchema.getNextTimestamp(segmentValue) < timestamp) {
@@ -245,7 +252,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
                     segment.put(key, sv.serialize());
                 } else {
                     if (!segmentValueSchema.isEmpty(segmentValue)
-                        && segmentValueSchema.getMinTimestamp(segmentValue) > timestamp) {
+                        && segmentValueSchema.getMinTimestamp(segmentValue) < timestamp) { // TODO: what about equality case? general issue that needs to be patched throughout the code
                         throw new IllegalStateException(
                             "Incorrect assumption about fall-through insertion always being earliest");
                     }

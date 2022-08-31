@@ -149,6 +149,7 @@ public abstract class AbstractJoinIntegrationTest {
             long eventTimestamp = firstTimestamp;
             final Iterator<List<TestRecord<Long, String>>> resultIterator = expectedResult.iterator();
             for (final Input<String> singleInputRecord : input) {
+                //System.out.printf("vxia test: put input(%s, %s)%n", singleInputRecord.topic, singleInputRecord.record.value);
                 testInputTopicMap.get(singleInputRecord.topic).pipeInput(singleInputRecord.record.key, singleInputRecord.record.value, ++eventTimestamp);
 
                 final List<TestRecord<Long, String>> expected = resultIterator.next();
