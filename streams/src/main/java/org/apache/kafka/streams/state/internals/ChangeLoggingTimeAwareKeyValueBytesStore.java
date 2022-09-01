@@ -30,7 +30,7 @@ public class ChangeLoggingTimeAwareKeyValueBytesStore
                      final StateStore root) {
         this.context = asInternalProcessorContext(context);
         super.init(context, root);
-        // TODO: this used to set an eviction listener. is that still needed?
+        // TODO: this used to set an eviction listener. is that still needed? (has to do with caches, revisit when implementing cache)
     }
 
     @Override
@@ -38,7 +38,7 @@ public class ChangeLoggingTimeAwareKeyValueBytesStore
                      final StateStore root) {
         this.context = asInternalProcessorContext(context);
         super.init(context, root);
-        // TODO: this used to set an eviction listener. is that still needed?
+        // TODO: this used to set an eviction listener. is that still needed? (has to do with caches, revisit when implementing cache)
     }
 
     @Override
@@ -145,8 +145,13 @@ public class ChangeLoggingTimeAwareKeyValueBytesStore
     }
 
     void log(final Bytes key, final ValueAndTimestamp<byte[]> value) {
-        // TODO: here. update logic for changelogging
-        // TODO: also, is context.timestamp() always a valid way to get the timestamp? if so, is it preferrable to pass timestamp that way instead?
-        //context.logChange(name(), key, value, context.timestamp(), wrapped().getPosition());
+        // TODO(note): this logic stays pretty much the same but need to figure out where to change configs for the topic
+        context.logChange(
+            name(),
+            key,
+            value == null ? null : value.value(), // TODO(note): should only actually come in as null from delete()
+            context.timestamp(), // TODO: make consistent with regards to where the timestamp comes from
+            wrapped().getPosition()
+        );
     }
 }

@@ -55,6 +55,10 @@ public class VersionedKeyValueStoreBuilder<K, V>
             innerValueSerde);
     }
 
+    public long historyRetention() {
+        return storeSupplier.historyRetentionMs();
+    }
+
     private VersionedKeyValueStore<Bytes, byte[]> maybeWrapCaching(final VersionedKeyValueStore<Bytes, byte[]> inner) {
         if (!enableCaching) {
             return inner;
@@ -69,17 +73,38 @@ public class VersionedKeyValueStoreBuilder<K, V>
         return new ChangeLoggingTimeAwareKeyValueBytesStore(inner);
     }
 
-    // TODO(note): same as KeyValueBytesStoreSupplier except with ValueAndTimestamp already present
+    // TODO(note): same as KeyValueBytesStoreSupplier except with ValueAndTimestamp already present.
+    // also needs additional methods to expose retention period and segment interval (see WindowBytesStoreSupplier for inspiration)
+    // TODO: should this be moved to be a public interface, similar to WindowBytesStoreSupplier?
     interface VersionedKeyValueBytesStoreSupplier
         extends StoreSupplier<VersionedKeyValueStore<Bytes, byte[]>> {
+
+        /**
+         * The history retention (in milliseconds) for the {@link VersionedKeyValueStore}.
+         *
+         * @return history retention (in milliseconds)
+         */
+        long historyRetentionMs();
+
+        /**
+         * The size of the segments (in milliseconds) the store has.
+         *
+         * @return size of the segments (in milliseconds)
+         */
+        long segmentIntervalMs();
     }
 
-    public class RocksDBVersionedStoreSupplier implements VersionedKeyValueBytesStoreSupplier {
+    public static class RocksDBVersionedStoreSupplier implements VersionedKeyValueBytesStoreSupplier {
 
         private final String name;
+        private final long historyRetentionMs;
+        private final long segmentIntervalMs;
 
         public RocksDBVersionedStoreSupplier(final String name) {
             this.name = name;
+            // TODO: do not hard code history retention
+            this.historyRetentionMs = 300_000L;
+            this.segmentIntervalMs = 150_000L;
         }
 
         @Override
@@ -88,9 +113,18 @@ public class VersionedKeyValueStoreBuilder<K, V>
         }
 
         @Override
+        public long historyRetentionMs() {
+            return historyRetentionMs;
+        }
+
+        @Override
+        public long segmentIntervalMs() {
+            return segmentIntervalMs;
+        }
+
+        @Override
         public VersionedKeyValueStore<Bytes, byte[]> get() {
-            // TODO: do not hard code history retention
-            return new RocksDBVersionedStore(name, metricsScope(), 300_000L, 150_000L);
+            return new RocksDBVersionedStore(name, metricsScope(), historyRetentionMs, segmentIntervalMs);
         }
 
         @Override
