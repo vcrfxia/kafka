@@ -387,9 +387,9 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     interface VersionedStoreClient<T> {
         byte[] getLatestValue(Bytes key);
         void putLatestValue(Bytes key, byte[] value);
-        byte[] deleteLatestValue(Bytes key);
+        void deleteLatestValue(Bytes key);
         T getOrCreateSegmentIfLive(long segmentId, ProcessorContext context, long streamTime);
-        List<T> getReverseSegments(long timestampFrom);
+        List<T> getReverseSegments(long timestampFrom, Bytes key);
         byte[] getFromSegment(T segment, Bytes key);
         void putToSegment(T segment, Bytes key, byte[] value);
         long getIdForSegment(T segment);
@@ -408,8 +408,8 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         }
 
         @Override
-        public byte[] deleteLatestValue(Bytes key) {
-            return latestValueStore.delete(key);
+        public void deleteLatestValue(Bytes key) {
+            latestValueStore.delete(key);
         }
 
         @Override
@@ -418,7 +418,8 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         }
 
         @Override
-        public List<KeyValueSegment> getReverseSegments(long timestampFrom) {
+        public List<KeyValueSegment> getReverseSegments(long timestampFrom, Bytes key) {
+            // do not attempt filter by key because it is slow. return all segments instead.
             return segmentStores.segments(timestampFrom, Long.MAX_VALUE, false);
         }
 
@@ -500,7 +501,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         }
 
         // continue search in segments
-        final List<T> segments = versionedStoreClient.getReverseSegments(timestamp);
+        final List<T> segments = versionedStoreClient.getReverseSegments(timestamp, key);
         for (final T segment : segments) {
             final byte[] segmentValue = versionedStoreClient.getFromSegment(segment, key);
             if (segmentValue != null) {
@@ -658,7 +659,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
     // TODO: convert to interface, move elsewhere, unify implementation with elsewhere?
     // bytes layout: timestamp + value
-    private static class LatestValueSchema {
+    static class LatestValueSchema {
         private static final int TIMESTAMP_SIZE = 8;
         long getTimestamp(final byte[] latestValue) {
             return ByteBuffer.wrap(latestValue).getLong();
@@ -683,7 +684,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
     // TODO: convert to interface, move elsewhere, have RocksDBVersionedStoreSegmentValueFormatter
     // implement interface
-    private static class SegmentValueSchema {
+    static class SegmentValueSchema {
         long getNextTimestamp(final byte[] segmentValue) {
             return RocksDBVersionedStoreSegmentValueFormatter.getNextTimestamp(segmentValue);
         }
