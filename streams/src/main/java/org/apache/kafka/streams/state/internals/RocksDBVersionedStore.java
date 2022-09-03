@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.utils.Bytes;
@@ -42,6 +43,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     private final KeyValueSegments segmentStores;
     private final LatestValueSchema latestValueSchema;
     private final SegmentValueSchema segmentValueSchema;
+    private final RocksdbVersionedStoreClient versionedStoreClient;
 
     private ProcessorContext context;
     private StateStoreContext stateStoreContext;
@@ -60,210 +62,23 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         this.segmentStores = new KeyValueSegments(segmentsName(name), historyRetention, segmentInterval, metricsRecorder);
         this.latestValueSchema = new LatestValueSchema();
         this.segmentValueSchema = new SegmentValueSchema();
+        this.versionedStoreClient = new RocksdbVersionedStoreClient();
     }
 
     // valueAndTimestamp should never come in as null, should always be a null wrapped with a timestamp
     @Override
     public void put(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp) {
-        LOG.info(String.format("vxia debug: put: key (%s), value (%s), ts (%d)",
-            key.toString(),
-            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
-            valueAndTimestamp.timestamp()
-        ));
-
-        // TODO: complicated logic here. see AbstractDualSchemaRocksDBSegmentedBytesStore for inspiration
-        final long timestamp = valueAndTimestamp.timestamp();
-        observedStreamTime = Math.max(observedStreamTime, timestamp);
-
-        // check latest value store
-        long foundTs = SENTINEL_TIMESTAMP; // tracks smallest timestamp larger than insertion timestamp seen so far
-        final byte[] latestValue = latestValueStore.get(key);
-        if (latestValue != null) {
-            foundTs = latestValueSchema.getTimestamp(latestValue);
-            if (timestamp >= foundTs) {
-                // move existing latest value into segment
-                final long segmentId = segmentStores.segmentId(timestamp);
-                final KeyValueSegment segment = segmentStores.getOrCreateSegmentIfLive(segmentId, context, observedStreamTime);
-                if (segment == null) {
-                    LOG.info("vxia debug: Not moving existing latest value to segment for old update.");
-                } else {
-                    final byte[] foundValue = latestValueSchema.getValue(latestValue);
-                    final byte[] segmentValueBytes = segment.get(key);
-                    if (segmentValueBytes == null) {
-                        segment.put(
-                            key,
-                            segmentValueSchema
-                                .newSegmentValueWithRecord(foundValue, foundTs, timestamp)
-                                .serialize()
-                        );
-                    } else {
-                        final SegmentValue segmentValue = segmentValueSchema.deserialize(segmentValueBytes);
-                        segmentValue.insertAsLatest(foundTs, timestamp, foundValue);
-                        segment.put(key, segmentValue.serialize());
-                    }
-                }
-
-                // update latest value store
-                if (valueAndTimestamp.value() != null) {
-                    latestValueStore.put(key, latestValueSchema.from(valueAndTimestamp.value(), timestamp));
-                } else {
-                    latestValueStore.delete(key);
-                }
-                return;
-            }
-        }
-
-        // continue search in segments
-        final List<KeyValueSegment> segments = segmentStores.segments(timestamp, Long.MAX_VALUE, false);
-        for (final KeyValueSegment segment : segments) {
-            final byte[] segmentValue = segment.get(key);
-            if (segmentValue != null) {
-                final long foundNextTs = segmentValueSchema.getNextTimestamp(segmentValue);
-                if (foundNextTs <= timestamp) {
-                    // this segment (and all earlier segments) does not contain records affected by
-                    // this put. insert into the tentativeSegmentId and conclude the procedure.
-                    // (break to use same procedure "insert into tentative segment" as below)
-                    break;
-                }
-
-                if (segmentValueSchema.isEmpty(segmentValue)) {
-                    // the record being inserted belongs in this segment.
-                    // insert and conclude the procedure.
-                    final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
-                    sv.insertAsEarliest(timestamp, valueAndTimestamp.value());
-                    segment.put(key, sv.serialize());
-                    return;
-                }
-
-                final long minFoundTs = segmentValueSchema.getMinTimestamp(segmentValue);
-                if (minFoundTs <= timestamp) {
-                    // the record being inserted belongs in this segment.
-                    // insert and conclude the procedure.
-                    final long segmentIdForTimestamp = segmentStores.segmentId(timestamp);
-                    final boolean writeToOlderSegmentNeeded = segmentIdForTimestamp != segment.id;
-
-                    final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
-                    final SegmentSearchResult searchResult = sv.find(timestamp, writeToOlderSegmentNeeded);
-
-                    if (writeToOlderSegmentNeeded) {
-                        // existing record needs to be moved to an older segment. do this first.
-                        final KeyValueSegment olderSegment = segmentStores
-                            .getOrCreateSegmentIfLive(segmentIdForTimestamp, context, observedStreamTime);
-                        final byte[] olderSegmentValue = olderSegment.get(key);
-                        if (olderSegmentValue == null) {
-                            olderSegment.put(
-                                key,
-                                segmentValueSchema.newSegmentValueWithRecord(
-                                    searchResult.value(), searchResult.validFrom(), timestamp
-                                ).serialize()
-                            );
-                        } else {
-                            final SegmentValue olderSv = segmentValueSchema.deserialize(olderSegmentValue);
-                            olderSv.insertAsLatest(searchResult.validFrom(), timestamp, searchResult.value());
-                            olderSegment.put(key, olderSv.serialize());
-                        }
-
-                        // update in newer segment (replace the record that was just moved with the new one)
-                        sv.updateRecord(timestamp, valueAndTimestamp.value(), searchResult.index());
-                        segment.put(key, sv.serialize());
-                    } else {
-                        sv.insert(timestamp, valueAndTimestamp.value(), searchResult.index());
-                        segment.put(key, sv.serialize());
-                    }
-                    return;
-                }
-
-                // TODO: we can technically remove this
-                if (minFoundTs < observedStreamTime - historyRetention) {
-                    // the record being inserted does not affect version history. discard and return
-                    LOG.warn("Skipping record for expired put.");
-                    return;
-                }
-
-                // it's possible the record belongs in this segment, but also possible it belongs
-                // in an earlier segment. mark as tentative and continue.
-                foundTs = minFoundTs;
-
-                // TODO: we could skip past some segments according to minFoundTs. add this optimization later
-            }
-        }
-
-        // ran out of segments to search. insert into tentative segment.
-        if (foundTs == SENTINEL_TIMESTAMP) {
-            // insert into latest value store
-            if (valueAndTimestamp.value() != null) {
-                latestValueStore.put(key, latestValueSchema.from(valueAndTimestamp.value(), timestamp));
-            } else {
-                // tombstones are not inserted into the latest value store. insert into segment instead
-                final KeyValueSegment segment = segmentStores.getOrCreateSegmentIfLive(
-                    segmentStores.segmentId(timestamp), context, observedStreamTime);
-                if (segment == null) {
-                    LOG.warn("Skipping record for expired put.");
-                    return;
-                }
-
-                final byte[] segmentValue = segment.get(key);
-                if (segmentValue == null) {
-                    segment.put(key, segmentValueSchema.newSegmentValueWithTombstone(timestamp).serialize());
-                } else {
-                    // insert as latest, since foundTs = sentinel means nothing later exists
-                    final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
-                    sv.insertAsLatest(
-                        segmentValueSchema.getNextTimestamp(segmentValue),
-                        timestamp,
-                        null
-                    );
-                    segment.put(key, sv.serialize());
-                }
-            }
-        } else {
-            // insert into segment corresponding to foundTs. the new record is the earliest in this
-            // segment, or the segment is empty (in which case the new record could be either before
-            // or after the existing tombstone)
-            final KeyValueSegment segment = segmentStores.getOrCreateSegmentIfLive(
-                segmentStores.segmentId(foundTs), context, observedStreamTime);
-            if (segment == null) {
-                LOG.warn("Skipping record for expired put.");
-                return;
-            }
-
-            final byte[] segmentValue = segment.get(key);
-            if (segmentValue == null) {
-                if (valueAndTimestamp.value() != null) {
-                    segment.put(key, segmentValueSchema.newSegmentValueWithRecord(
-                        valueAndTimestamp.value(), timestamp, foundTs
-                    ).serialize());
-                } else {
-                    segment.put(
-                        key,
-                        segmentValueSchema.newSegmentValueWithTombstone(timestamp).serialize()
-                    );
-                }
-            } else {
-                if (segmentValueSchema.isEmpty(segmentValue)
-                    && segmentValueSchema.getNextTimestamp(segmentValue) < timestamp) {
-                    // insert as latest into empty segment
-                    final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
-                    sv.insertAsLatest(
-                        timestamp,
-                        foundTs,
-                        valueAndTimestamp.value()
-                    );
-                    segment.put(key, sv.serialize());
-                } else {
-                    if (!segmentValueSchema.isEmpty(segmentValue)
-                        && segmentValueSchema.getMinTimestamp(segmentValue) < timestamp) { // TODO: what about equality case? general issue that needs to be patched throughout the code
-                        throw new IllegalStateException(
-                            "Incorrect assumption about fall-through insertion always being earliest");
-                    }
-
-                    // insert as earliest (into possibly empty segment)
-                    final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
-                    sv.insertAsEarliest(timestamp, valueAndTimestamp.value());
-                    segment.put(key, sv.serialize());
-                }
-            }
-        }
+        observedStreamTime = putHelper(
+            latestValueSchema,
+            segmentValueSchema,
+            versionedStoreClient,
+            segmentStores::segmentId,
+            context,
+            observedStreamTime,
+            historyRetention,
+            key,
+            valueAndTimestamp
+        );
     }
 
     @Override
@@ -567,6 +382,278 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
     private void restoreAllInternal(final Collection<ConsumerRecord<byte[], byte[]>> records) {
         // TODO: this is a problem. requires reading from db before it is open, which is not allowed today
+    }
+
+    interface VersionedStoreClient<T> {
+        byte[] getLatestValue(Bytes key);
+        void putLatestValue(Bytes key, byte[] value);
+        byte[] deleteLatestValue(Bytes key);
+        T getOrCreateSegmentIfLive(long segmentId, ProcessorContext context, long streamTime);
+        List<T> getReverseSegments(long timestampFrom);
+        byte[] getFromSegment(T segment, Bytes key);
+        void putToSegment(T segment, Bytes key, byte[] value);
+        long getIdForSegment(T segment);
+    }
+
+    private final class RocksdbVersionedStoreClient implements VersionedStoreClient<KeyValueSegment> {
+
+        @Override
+        public byte[] getLatestValue(Bytes key) {
+            return latestValueStore.get(key);
+        }
+
+        @Override
+        public void putLatestValue(Bytes key, byte[] value) {
+            latestValueStore.put(key, value);
+        }
+
+        @Override
+        public byte[] deleteLatestValue(Bytes key) {
+            return latestValueStore.delete(key);
+        }
+
+        @Override
+        public KeyValueSegment getOrCreateSegmentIfLive(long segmentId, ProcessorContext context, long streamTime) {
+            return segmentStores.getOrCreateSegmentIfLive(segmentId, context, streamTime);
+        }
+
+        @Override
+        public List<KeyValueSegment> getReverseSegments(long timestampFrom) {
+            return segmentStores.segments(timestampFrom, Long.MAX_VALUE, false);
+        }
+
+        @Override
+        public byte[] getFromSegment(KeyValueSegment segment, Bytes key) {
+            return segment.get(key);
+        }
+
+        @Override
+        public void putToSegment(KeyValueSegment segment, Bytes key, byte[] value) {
+            segment.put(key, value);
+        }
+
+        @Override
+        public long getIdForSegment(KeyValueSegment segment) {
+            return segment.id;
+        }
+    }
+
+    // returns new stream time
+    static <T> long putHelper(
+        final LatestValueSchema latestValueSchema,
+        final SegmentValueSchema segmentValueSchema,
+        final VersionedStoreClient<T> versionedStoreClient,
+        final Function<Long, Long> segmentIdGetter,
+        final ProcessorContext context,
+        final long observedStreamTime,
+        final long historyRetention,
+        final Bytes key,
+        final ValueAndTimestamp<byte[]> valueAndTimestamp
+    ) {
+        LOG.info(String.format("vxia debug: put: key (%s), value (%s), ts (%d)",
+            key.toString(),
+            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
+            valueAndTimestamp.timestamp()
+        ));
+
+        // TODO: complicated logic here. see AbstractDualSchemaRocksDBSegmentedBytesStore for inspiration
+        final long timestamp = valueAndTimestamp.timestamp();
+        final long newStreamTime = Math.max(observedStreamTime, timestamp);
+
+        // check latest value store
+        long foundTs = SENTINEL_TIMESTAMP; // tracks smallest timestamp larger than insertion timestamp seen so far
+        final byte[] latestValue = versionedStoreClient.getLatestValue(key);
+        if (latestValue != null) {
+            foundTs = latestValueSchema.getTimestamp(latestValue);
+            if (timestamp >= foundTs) {
+                // move existing latest value into segment
+                final long segmentId = segmentIdGetter.apply(timestamp);
+                final T segment = versionedStoreClient.getOrCreateSegmentIfLive(segmentId, context, observedStreamTime);
+                if (segment == null) {
+                    LOG.info("vxia debug: Not moving existing latest value to segment for old update.");
+                } else {
+                    final byte[] foundValue = latestValueSchema.getValue(latestValue);
+                    final byte[] segmentValueBytes = versionedStoreClient.getFromSegment(segment, key);
+                    if (segmentValueBytes == null) {
+                        versionedStoreClient.putToSegment(
+                            segment,
+                            key,
+                            segmentValueSchema
+                                .newSegmentValueWithRecord(foundValue, foundTs, timestamp)
+                                .serialize()
+                        );
+                    } else {
+                        final SegmentValue segmentValue = segmentValueSchema.deserialize(segmentValueBytes);
+                        segmentValue.insertAsLatest(foundTs, timestamp, foundValue);
+                        versionedStoreClient.putToSegment(segment, key, segmentValue.serialize());
+                    }
+                }
+
+                // update latest value store
+                if (valueAndTimestamp.value() != null) {
+                    versionedStoreClient.putLatestValue(key, latestValueSchema.from(valueAndTimestamp.value(), timestamp));
+                } else {
+                    versionedStoreClient.deleteLatestValue(key);
+                }
+                return newStreamTime;
+            }
+        }
+
+        // continue search in segments
+        final List<T> segments = versionedStoreClient.getReverseSegments(timestamp);
+        for (final T segment : segments) {
+            final byte[] segmentValue = versionedStoreClient.getFromSegment(segment, key);
+            if (segmentValue != null) {
+                final long foundNextTs = segmentValueSchema.getNextTimestamp(segmentValue);
+                if (foundNextTs <= timestamp) {
+                    // this segment (and all earlier segments) does not contain records affected by
+                    // this put. insert into the tentativeSegmentId and conclude the procedure.
+                    // (break to use same procedure "insert into tentative segment" as below)
+                    break;
+                }
+
+                if (segmentValueSchema.isEmpty(segmentValue)) {
+                    // the record being inserted belongs in this segment.
+                    // insert and conclude the procedure.
+                    final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
+                    sv.insertAsEarliest(timestamp, valueAndTimestamp.value());
+                    versionedStoreClient.putToSegment(segment, key, sv.serialize());
+                    return newStreamTime;
+                }
+
+                final long minFoundTs = segmentValueSchema.getMinTimestamp(segmentValue);
+                if (minFoundTs <= timestamp) {
+                    // the record being inserted belongs in this segment.
+                    // insert and conclude the procedure.
+                    final long segmentIdForTimestamp = segmentIdGetter.apply(timestamp);
+                    final boolean writeToOlderSegmentNeeded
+                        = segmentIdForTimestamp != versionedStoreClient.getIdForSegment(segment);
+
+                    final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
+                    final SegmentSearchResult searchResult = sv.find(timestamp, writeToOlderSegmentNeeded);
+
+                    if (writeToOlderSegmentNeeded) {
+                        // existing record needs to be moved to an older segment. do this first.
+                        final T olderSegment = versionedStoreClient
+                            .getOrCreateSegmentIfLive(segmentIdForTimestamp, context, observedStreamTime);
+                        final byte[] olderSegmentValue = versionedStoreClient.getFromSegment(olderSegment, key);
+                        if (olderSegmentValue == null) {
+                            versionedStoreClient.putToSegment(
+                                olderSegment,
+                                key,
+                                segmentValueSchema.newSegmentValueWithRecord(
+                                    searchResult.value(), searchResult.validFrom(), timestamp
+                                ).serialize()
+                            );
+                        } else {
+                            final SegmentValue olderSv = segmentValueSchema.deserialize(olderSegmentValue);
+                            olderSv.insertAsLatest(searchResult.validFrom(), timestamp, searchResult.value());
+                            versionedStoreClient.putToSegment(olderSegment, key, olderSv.serialize());
+                        }
+
+                        // update in newer segment (replace the record that was just moved with the new one)
+                        sv.updateRecord(timestamp, valueAndTimestamp.value(), searchResult.index());
+                        versionedStoreClient.putToSegment(segment, key, sv.serialize());
+                    } else {
+                        sv.insert(timestamp, valueAndTimestamp.value(), searchResult.index());
+                        versionedStoreClient.putToSegment(segment, key, sv.serialize());
+                    }
+                    return newStreamTime;
+                }
+
+                // TODO: we can technically remove this
+                if (minFoundTs < observedStreamTime - historyRetention) {
+                    // the record being inserted does not affect version history. discard and return
+                    LOG.warn("Skipping record for expired put.");
+                    return newStreamTime;
+                }
+
+                // it's possible the record belongs in this segment, but also possible it belongs
+                // in an earlier segment. mark as tentative and continue.
+                foundTs = minFoundTs;
+
+                // TODO: we could skip past some segments according to minFoundTs. add this optimization later
+            }
+        }
+
+        // ran out of segments to search. insert into tentative segment.
+        if (foundTs == SENTINEL_TIMESTAMP) {
+            // insert into latest value store
+            if (valueAndTimestamp.value() != null) {
+                versionedStoreClient.putLatestValue(key, latestValueSchema.from(valueAndTimestamp.value(), timestamp));
+            } else {
+                // tombstones are not inserted into the latest value store. insert into segment instead
+                final T segment = versionedStoreClient.getOrCreateSegmentIfLive(
+                    segmentIdGetter.apply(timestamp), context, observedStreamTime);
+                if (segment == null) {
+                    LOG.warn("Skipping record for expired put.");
+                    return newStreamTime;
+                }
+
+                final byte[] segmentValue = versionedStoreClient.getFromSegment(segment, key);
+                if (segmentValue == null) {
+                    versionedStoreClient.putToSegment(segment, key, segmentValueSchema.newSegmentValueWithTombstone(timestamp).serialize());
+                } else {
+                    // insert as latest, since foundTs = sentinel means nothing later exists
+                    final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
+                    sv.insertAsLatest(
+                        segmentValueSchema.getNextTimestamp(segmentValue),
+                        timestamp,
+                        null
+                    );
+                    versionedStoreClient.putToSegment(segment, key, sv.serialize());
+                }
+            }
+        } else {
+            // insert into segment corresponding to foundTs. the new record is the earliest in this
+            // segment, or the segment is empty (in which case the new record could be either before
+            // or after the existing tombstone)
+            final T segment = versionedStoreClient.getOrCreateSegmentIfLive(
+                segmentIdGetter.apply(foundTs), context, observedStreamTime);
+            if (segment == null) {
+                LOG.warn("Skipping record for expired put.");
+                return newStreamTime;
+            }
+
+            final byte[] segmentValue = versionedStoreClient.getFromSegment(segment, key);
+            if (segmentValue == null) {
+                if (valueAndTimestamp.value() != null) {
+                    versionedStoreClient.putToSegment(segment, key, segmentValueSchema.newSegmentValueWithRecord(
+                        valueAndTimestamp.value(), timestamp, foundTs
+                    ).serialize());
+                } else {
+                    versionedStoreClient.putToSegment(
+                        segment,
+                        key,
+                        segmentValueSchema.newSegmentValueWithTombstone(timestamp).serialize()
+                    );
+                }
+            } else {
+                if (segmentValueSchema.isEmpty(segmentValue)
+                    && segmentValueSchema.getNextTimestamp(segmentValue) < timestamp) {
+                    // insert as latest into empty segment
+                    final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
+                    sv.insertAsLatest(
+                        timestamp,
+                        foundTs,
+                        valueAndTimestamp.value()
+                    );
+                    versionedStoreClient.putToSegment(segment, key, sv.serialize());
+                } else {
+                    if (!segmentValueSchema.isEmpty(segmentValue)
+                        && segmentValueSchema.getMinTimestamp(segmentValue) < timestamp) { // TODO: what about equality case? general issue that needs to be patched throughout the code
+                        throw new IllegalStateException(
+                            "Incorrect assumption about fall-through insertion always being earliest");
+                    }
+
+                    // insert as earliest (into possibly empty segment)
+                    final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
+                    sv.insertAsEarliest(timestamp, valueAndTimestamp.value());
+                    versionedStoreClient.putToSegment(segment, key, sv.serialize());
+                }
+            }
+        }
+        return newStreamTime;
     }
 
     // TODO: convert to interface, move elsewhere, unify implementation with elsewhere?
