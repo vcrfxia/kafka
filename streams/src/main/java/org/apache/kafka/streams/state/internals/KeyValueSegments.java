@@ -43,6 +43,11 @@ class KeyValueSegments extends AbstractSegments<KeyValueSegment> {
         this.metricsRecorder = metricsRecorder;
     }
 
+    // TODO(note): ugly hack to allow RocksDBVersionedStoreRestoreClient to delegate getFromSegment() to RocksDBVersionedStoreClient
+    public KeyValueSegment getSegment(final long segmentId) {
+        return segments.get(segmentId);
+    }
+
     @Override
     public KeyValueSegment getOrCreateSegment(final long segmentId,
                                               final ProcessorContext context) {

@@ -393,6 +393,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         byte[] getFromSegment(T segment, Bytes key);
         void putToSegment(T segment, Bytes key, byte[] value);
         long getIdForSegment(T segment);
+        T getSegmentIfPresent(long segmentId); // TODO(note): hack to allow cache client to delegate getFromSegment() to db client
     }
 
     private final class RocksdbVersionedStoreClient implements VersionedStoreClient<KeyValueSegment> {
@@ -436,6 +437,11 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         @Override
         public long getIdForSegment(KeyValueSegment segment) {
             return segment.id;
+        }
+
+        @Override
+        public KeyValueSegment getSegmentIfPresent(long segmentId) {
+            return segmentStores.getSegment(segmentId);
         }
     }
 

@@ -145,7 +145,13 @@ public class RocksDBVersionedStoreRestoreHelpers {
             }
 
             // not found in cache, check db instead
-            final byte[] dbValue = readOnlyDelegate.getFromSegment(segment, key); // TODO(here): this doesn't delegate properly
+            final byte[] dbValue;
+            final T delegateSegment = readOnlyDelegate.getSegmentIfPresent(segment);
+            if (delegateSegment == null) {
+                dbValue = null;
+            } else {
+                dbValue = readOnlyDelegate.getFromSegment(delegateSegment, key);
+            }
             entry.putSegment(segment, new MaybeDirty<>(new CacheSegmentValue(dbValue), false));
             return dbValue;
         }
@@ -166,6 +172,11 @@ public class RocksDBVersionedStoreRestoreHelpers {
                 throw new IllegalStateException("segment cannot be null");
             }
             return segment;
+        }
+
+        @Override
+        public Long getSegmentIfPresent(long segmentId) {
+            return segmentId;
         }
     }
 
