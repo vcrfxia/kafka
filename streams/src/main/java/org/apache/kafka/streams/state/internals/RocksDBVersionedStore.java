@@ -43,7 +43,10 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     private final KeyValueSegments segmentStores;
     private final LatestValueSchema latestValueSchema;
     private final SegmentValueSchema segmentValueSchema;
-    private final RocksdbVersionedStoreClient versionedStoreClient;
+    private final VersionedStoreClient<KeyValueSegment> versionedStoreClient;
+
+    private final RocksDBVersionedStoreRestoreHelper restoreHelper;
+    private final VersionedStoreClient<Long> versionedStoreRestoreClient;
 
     private ProcessorContext context;
     private StateStoreContext stateStoreContext;
@@ -62,7 +65,15 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         this.segmentStores = new KeyValueSegments(segmentsName(name), historyRetention, segmentInterval, metricsRecorder);
         this.latestValueSchema = new LatestValueSchema();
         this.segmentValueSchema = new SegmentValueSchema();
-        this.versionedStoreClient = new RocksdbVersionedStoreClient();
+        this.versionedStoreClient = new RocksDBVersionedStoreClient();
+        this.restoreHelper = RocksDBVersionedStoreRestoreHelper.makeWithRemovalListener(
+            latestValueStore::put,
+            (segmentId, k, v) -> {
+                final KeyValueSegment segment = segmentStores.getOrCreateSegment(segmentId, context); // TODO: update to IfLive once processor time is taken into account
+                segment.put(k, v);
+            }
+        );
+        this.versionedStoreRestoreClient = restoreHelper.getRestoreClient(versionedStoreClient, segmentStores::segmentId); // TODO: convert store client to read-only
     }
 
     // valueAndTimestamp should never come in as null, should always be a null wrapped with a timestamp
@@ -361,7 +372,26 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         // register and possibly restore the state from the logs
         stateStoreContext.register(
             root,
-            (RecordBatchingStateRestoreCallback) this::restoreAllInternal,
+            new RecordBatchingStateRestoreCallback() {
+                @Override
+                public void restoreBatch(Collection<ConsumerRecord<byte[], byte[]>> records) {
+                    restoreAllInternal(records);
+                }
+
+                @Override
+                public void finishRestore() {
+                    restoreHelper.flushAll(
+                        versionedStoreClient::putLatestValue,
+                        (segmentId, key, value) -> { // TODO: pull this shared logic out into a helper?
+                            final KeyValueSegment segment = versionedStoreClient
+                                .getOrCreateSegmentIfLive(segmentId, context, observedStreamTime); // TODO: make this choice of helper consistent across the different use cases
+                            if (segment != null) {
+                                versionedStoreClient.putToSegment(segment, key, value);
+                            }
+                        }
+                    );
+                }
+            },
             () -> StoreQueryUtils.checkpointPosition(positionCheckpoint, position)
         );
 
@@ -382,6 +412,19 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
     private void restoreAllInternal(final Collection<ConsumerRecord<byte[], byte[]>> records) {
         // TODO: this is a problem. requires reading from db before it is open, which is not allowed today
+        for (ConsumerRecord<byte[], byte[]> record : records) {
+            putHelper(
+                latestValueSchema,
+                segmentValueSchema,
+                versionedStoreRestoreClient,
+                segmentStores::segmentId, // TODO: extract into variable?
+                context,
+                observedStreamTime,
+                historyRetention,
+                new Bytes(record.key()),
+                ValueAndTimestamp.makeAllowNullable(record.value(), record.timestamp())
+            );
+        }
     }
 
     interface VersionedStoreClient<T> {
@@ -396,7 +439,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         T getSegmentIfPresent(long segmentId); // TODO(note): hack to allow cache client to delegate getFromSegment() to db client
     }
 
-    private final class RocksdbVersionedStoreClient implements VersionedStoreClient<KeyValueSegment> {
+    private final class RocksDBVersionedStoreClient implements VersionedStoreClient<KeyValueSegment> {
 
         @Override
         public byte[] getLatestValue(Bytes key) {

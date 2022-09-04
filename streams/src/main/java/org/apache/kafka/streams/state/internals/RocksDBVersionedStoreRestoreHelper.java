@@ -1,6 +1,7 @@
 package org.apache.kafka.streams.state.internals;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,42 +11,92 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.processor.ProcessorContext;
-import org.apache.kafka.streams.state.KeyValueIterator;
-import org.apache.kafka.streams.state.internals.RocksDBVersionedStore.LatestValueSchema;
-import org.apache.kafka.streams.state.internals.RocksDBVersionedStore.SegmentValueSchema;
 import org.apache.kafka.streams.state.internals.RocksDBVersionedStore.VersionedStoreClient;
-import org.apache.kafka.streams.state.internals.RocksDBVersionedStoreRestoreHelpers.MemoryLRUCache.EldestEntryRemovalListener;
 
-public class RocksDBVersionedStoreRestoreHelpers {
+public class RocksDBVersionedStoreRestoreHelper {
 
     private static final int MAX_CACHE_SIZE = 200; // TODO: fix
 
-    private final LatestValueSchema latestValueSchema;
-    private final SegmentValueSchema segmentValueSchema;
-    private final Function<Long, Long> segmentIdGetter;
-
     private final MemoryLRUCache cache;
 
-    RocksDBVersionedStoreRestoreHelpers(
-        final LatestValueSchema latestValueSchema,
-        final SegmentValueSchema segmentValueSchema,
-        final Function<Long, Long> segmentIdGetter,
+    private RocksDBVersionedStoreRestoreHelper(
         final EldestEntryRemovalListener cacheRemovalListener
     ) {
-        this.latestValueSchema = latestValueSchema;
-        this.segmentValueSchema = segmentValueSchema;
-        this.segmentIdGetter = segmentIdGetter;
         this.cache = new MemoryLRUCache(cacheRemovalListener, MAX_CACHE_SIZE);
     }
 
-    // TODO(here): add methods for actually using the cache?
+    interface LatestValueStorePutter {
+        void apply(Bytes key, byte[] value);
+    }
+
+    interface SegmentStorePutter {
+        void apply(long segmentId, Bytes key, byte[] value);
+    }
+
+    private static void flushCacheEntry(
+        final LatestValueStorePutter lvsPutter,
+        final SegmentStorePutter segmentPutter,
+        final Bytes key,
+        final CacheEntry cacheEntry
+    ) {
+        if (cacheEntry == null) {
+            throw new IllegalStateException("should never evict null");
+        }
+
+        // write to latest value store
+        if (cacheEntry.getLatest().isDirty()) {
+            lvsPutter.apply(key, cacheEntry.getLatest().value().get());
+        }
+
+        // write to segment stores
+        for (Map.Entry<Long, MaybeDirty<CacheSegmentValue>> cacheSegment : cacheEntry.getAllSegments().entrySet()) {
+            if (cacheSegment.getValue().isDirty()) {
+                segmentPutter.apply(cacheSegment.getKey(), key, cacheSegment.getValue().value().get());
+            }
+        }
+    }
+
+    static RocksDBVersionedStoreRestoreHelper makeWithRemovalListener(
+        final LatestValueStorePutter lvsPutter,
+        final SegmentStorePutter segmentPutter
+    ) {
+        return new RocksDBVersionedStoreRestoreHelper((key, cacheEntry) -> {
+            flushCacheEntry(lvsPutter, segmentPutter, key, cacheEntry);
+        });
+    }
+
+    // TODO: optimize to write in batches instead of one at a time
+    void flushAll(
+        final LatestValueStorePutter lvsPutter,
+        final SegmentStorePutter segmentPutter
+    ) {
+        Iterator<Map.Entry<Bytes, CacheEntry>> iter = cache.all();
+        while (iter.hasNext()) {
+            final Map.Entry<Bytes, CacheEntry> kv = iter.next();
+            flushCacheEntry(lvsPutter, segmentPutter, kv.getKey(), kv.getValue());
+            iter.remove();
+        }
+    }
+
+    // TODO: can this be capture or does it need to be typed?
+    VersionedStoreClient<Long> getRestoreClient(
+        final VersionedStoreClient<?> readOnlyDelegate,
+        final Function<Long, Long> segmentIdGetter
+    ) {
+        return new RocksDBVersionedStoreRestoreClient<>(readOnlyDelegate, segmentIdGetter);
+    }
 
     private class RocksDBVersionedStoreRestoreClient<T> implements VersionedStoreClient<Long> {
 
         private final VersionedStoreClient<T> readOnlyDelegate;
+        private final Function<Long, Long> segmentIdGetter;
 
-        RocksDBVersionedStoreRestoreClient(final VersionedStoreClient<T> readOnlyDelegate) {
+        RocksDBVersionedStoreRestoreClient(
+            final VersionedStoreClient<T> readOnlyDelegate,
+            final Function<Long, Long> segmentIdGetter
+        ) {
             this.readOnlyDelegate = readOnlyDelegate;
+            this.segmentIdGetter = segmentIdGetter;
         }
 
         @Override
@@ -159,7 +210,7 @@ public class RocksDBVersionedStoreRestoreHelpers {
         @Override
         public void putToSegment(Long segment, Bytes key, byte[] value) {
             final CacheEntry entry = cache.get(key);
-            if (entry == null) { // TODO: move this up / handle differently
+            if (entry == null) { // TODO: handle differently
                 throw new IllegalStateException("should not put to segment before getting latest value");
             }
 
@@ -185,7 +236,7 @@ public class RocksDBVersionedStoreRestoreHelpers {
         private final TreeMap<Long, MaybeDirty<CacheSegmentValue>> segmentValues;
 
         CacheEntry(final MaybeDirty<CacheLatestValue> latestValue) {
-            this.latestValue = latestValue;
+            this.latestValue = Objects.requireNonNull(latestValue);
             // store in reverse-sorted order, to make getReverseSegments() more efficient. TODO: check
             this.segmentValues = new TreeMap<>((x, y) -> -Long.compare(x, y));
         }
@@ -209,10 +260,11 @@ public class RocksDBVersionedStoreRestoreHelpers {
         }
 
         void updateLatest(final MaybeDirty<CacheLatestValue> latestValue) {
-            this.latestValue = latestValue;
+            this.latestValue = Objects.requireNonNull(latestValue);
         }
 
         void putSegment(final long segmentId, final MaybeDirty<CacheSegmentValue> segmentValue) {
+            Objects.requireNonNull(segmentValue);
             this.segmentValues.put(segmentId, segmentValue);
         }
     }
@@ -262,15 +314,14 @@ public class RocksDBVersionedStoreRestoreHelpers {
         }
     }
 
-    // cribbed from streams implementation of MemoryLRUCache
-    static class MemoryLRUCache {
+    interface EldestEntryRemovalListener {
+        void apply(Bytes key, CacheEntry value);
+    }
 
-        interface EldestEntryRemovalListener {
-            void apply(Bytes key, CacheEntry value);
-        }
+    // cribbed from streams implementation of MemoryLRUCache
+    private static class MemoryLRUCache {
 
         private final Map<Bytes, CacheEntry> map;
-        private final EldestEntryRemovalListener listener;
 
         MemoryLRUCache(final EldestEntryRemovalListener listener, final int maxCacheSize) {
 
@@ -287,8 +338,6 @@ public class RocksDBVersionedStoreRestoreHelpers {
                     return evict;
                 }
             };
-
-            this.listener = listener;
         }
 
         public synchronized CacheEntry get(final Bytes key) { // TODO: restore should be single-threaded so this synchronization shouldn't be needed?
@@ -311,9 +360,9 @@ public class RocksDBVersionedStoreRestoreHelpers {
             return this.map.remove(key);
         }
 
-        public KeyValueIterator<Bytes, CacheEntry> all() {
-            // TODO: implement
+        // TODO: clean up return type?
+        public Iterator<Map.Entry<Bytes, CacheEntry>> all() {
+            return map.entrySet().iterator();
         }
-
     }
 }

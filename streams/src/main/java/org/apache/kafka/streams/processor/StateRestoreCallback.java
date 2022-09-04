@@ -23,4 +23,9 @@ package org.apache.kafka.streams.processor;
 public interface StateRestoreCallback {
 
     void restore(byte[] key, byte[] value);
+
+    // some similarities to (optional) user-provided StateRestoreListener#onRestoreEnd()
+    // but this is part of the restore process (restore is not complete until this has executed)
+    default void finishRestore() {
+    }
 }

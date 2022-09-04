@@ -660,6 +660,8 @@ public class StoreChangelogReader implements ChangelogReader {
         if (changelogMetadata.stateManager.taskType() == Task.TaskType.ACTIVE && hasRestoredToEnd(changelogMetadata)) {
             madeProgress = true;
 
+            stateManager.finishRestore(storeMetadata);
+
             log.info("Finished restoring changelog {} to store {} with a total number of {} records",
                 partition, storeName, changelogMetadata.totalRestored);
 

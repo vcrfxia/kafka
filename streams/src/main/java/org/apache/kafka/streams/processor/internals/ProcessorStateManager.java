@@ -460,6 +460,24 @@ public class ProcessorStateManager implements StateManager {
         }
     }
 
+    // used by changelog reader only
+    void finishRestore(final StateStoreMetadata storeMetadata) {
+        if (!stores.containsValue(storeMetadata)) {
+            throw new IllegalStateException("Finished restoring " + storeMetadata + " which is not registered in this state manager, " +
+                "this should not happen.");
+        }
+
+        final RecordBatchingStateRestoreCallback restoreCallback = adapt(storeMetadata.restoreCallback);
+        try {
+            restoreCallback.finishRestore();
+        } catch (final RuntimeException e) {
+            throw new ProcessorStateException(
+                format("%sException caught while trying to complete state restore from %s", logPrefix, storeMetadata.changelogPartition),
+                e
+            );
+        }
+    }
+
     /**
      * @throws TaskMigratedException recoverable error sending changelog records that would cause the task to be removed
      * @throws StreamsException fatal error when flushing the state store, for example sending changelog records failed

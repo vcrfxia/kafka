@@ -17,6 +17,7 @@
 
 package org.apache.kafka.streams.processor.internals;
 
+import java.util.Collection;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.BatchingStateRestoreCallback;
@@ -34,17 +35,33 @@ public final class StateRestoreCallbackAdapter {
         if (restoreCallback instanceof RecordBatchingStateRestoreCallback) {
             return (RecordBatchingStateRestoreCallback) restoreCallback;
         } else if (restoreCallback instanceof BatchingStateRestoreCallback) {
-            return records -> {
-                final List<KeyValue<byte[], byte[]>> keyValues = new ArrayList<>();
-                for (final ConsumerRecord<byte[], byte[]> record : records) {
-                    keyValues.add(new KeyValue<>(record.key(), record.value()));
+            return new RecordBatchingStateRestoreCallback() { // TODO: de-dup with below into a helper method
+                @Override
+                public void restoreBatch(Collection<ConsumerRecord<byte[], byte[]>> records) {
+                    final List<KeyValue<byte[], byte[]>> keyValues = new ArrayList<>();
+                    for (final ConsumerRecord<byte[], byte[]> record : records) {
+                        keyValues.add(new KeyValue<>(record.key(), record.value()));
+                    }
+                    ((BatchingStateRestoreCallback) restoreCallback).restoreAll(keyValues);
                 }
-                ((BatchingStateRestoreCallback) restoreCallback).restoreAll(keyValues);
+
+                @Override
+                public void finishRestore() {
+                    restoreCallback.finishRestore();
+                }
             };
         } else {
-            return records -> {
-                for (final ConsumerRecord<byte[], byte[]> record : records) {
-                    restoreCallback.restore(record.key(), record.value());
+            return new RecordBatchingStateRestoreCallback() {
+                @Override
+                public void restoreBatch(Collection<ConsumerRecord<byte[], byte[]>> records) {
+                    for (final ConsumerRecord<byte[], byte[]> record : records) {
+                        restoreCallback.restore(record.key(), record.value());
+                    }
+                }
+
+                @Override
+                public void finishRestore() {
+                    restoreCallback.finishRestore();
                 }
             };
         }
