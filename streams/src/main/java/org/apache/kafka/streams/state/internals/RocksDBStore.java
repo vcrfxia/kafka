@@ -295,8 +295,8 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         return open;
     }
 
-    private void validateStoreOpen() {
-        if (!open) {
+    private void validateStoreOpen(final boolean isRestoring) {
+        if (!isRestoring && !open) { // TODO: add extra field to ensure that isRestoring is only ever set to true during actual restoration?
             throw new InvalidStateStoreException("Store " + name + " is currently closed");
         }
     }
@@ -304,11 +304,16 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
     @Override
     public synchronized void put(final Bytes key,
                                  final byte[] value) {
+        put(key, value, false);
+    }
+
+    protected synchronized void put(
+        final Bytes key, final byte[] value, final boolean isRestoring) {
         Objects.requireNonNull(key, "key cannot be null");
-        validateStoreOpen();
+        validateStoreOpen(isRestoring);
         dbAccessor.put(key.get(), value);
 
-        StoreQueryUtils.updatePosition(position, context);
+        StoreQueryUtils.updatePosition(position, context); // TODO: should this be bypassed during restoration?
     }
 
     @Override
@@ -352,7 +357,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
     @Override
     public <PS extends Serializer<P>, P> KeyValueIterator<Bytes, byte[]> prefixScan(final P prefix,
                                                                                     final PS prefixKeySerializer) {
-        validateStoreOpen();
+        validateStoreOpen(false);
         Objects.requireNonNull(prefix, "prefix cannot be null");
         Objects.requireNonNull(prefixKeySerializer, "prefixKeySerializer cannot be null");
         final Bytes prefixBytes = Bytes.wrap(prefixKeySerializer.serialize(null, prefix));
@@ -365,7 +370,12 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
 
     @Override
     public synchronized byte[] get(final Bytes key) {
-        validateStoreOpen();
+        return get(key, false);
+    }
+
+    // TODO: cleanup these overloads and put into interface?
+    protected synchronized byte[] get(final Bytes key, final boolean isRestoring) {
+        validateStoreOpen(isRestoring);
         try {
             return dbAccessor.get(key.get());
         } catch (final RocksDBException e) {
@@ -392,7 +402,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
         Objects.requireNonNull(keyFrom, "keyFrom cannot be null");
         Objects.requireNonNull(keyTo, "keyTo cannot be null");
 
-        validateStoreOpen();
+        validateStoreOpen(false);
 
         // End of key is exclusive, so we increment it by 1 byte to make keyTo inclusive
         dbAccessor.deleteRange(keyFrom.get(), Bytes.increment(keyTo).get());
@@ -421,7 +431,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
             return KeyValueIterators.emptyIterator();
         }
 
-        validateStoreOpen();
+        validateStoreOpen(false);
 
         final KeyValueIterator<Bytes, byte[]> rocksDBRangeIterator = dbAccessor.range(from, to, forward);
         openIterators.add(rocksDBRangeIterator);
@@ -440,7 +450,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
     }
 
     KeyValueIterator<Bytes, byte[]> all(final boolean forward) {
-        validateStoreOpen();
+        validateStoreOpen(false);
         final KeyValueIterator<Bytes, byte[]> rocksDbIterator = dbAccessor.all(forward);
         openIterators.add(rocksDbIterator);
         return rocksDbIterator;
@@ -459,7 +469,7 @@ public class RocksDBStore implements KeyValueStore<Bytes, byte[]>, BatchWritingS
      */
     @Override
     public long approximateNumEntries() {
-        validateStoreOpen();
+        validateStoreOpen(false);
         final long numEntries;
         try {
             numEntries = dbAccessor.approximateNumEntries();

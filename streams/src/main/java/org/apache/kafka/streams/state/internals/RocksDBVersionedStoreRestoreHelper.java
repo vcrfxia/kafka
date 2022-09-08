@@ -17,12 +17,24 @@ public class RocksDBVersionedStoreRestoreHelper {
 
     private static final int MAX_CACHE_SIZE = 200; // TODO: fix
 
+    private final LatestValueStorePutter lvsPutter;
+    private final SegmentStorePutter segmentPutter;
+
     private final MemoryLRUCache cache;
 
     private RocksDBVersionedStoreRestoreHelper(
-        final EldestEntryRemovalListener cacheRemovalListener
+        final LatestValueStorePutter lvsPutter,
+        final SegmentStorePutter segmentPutter
     ) {
-        this.cache = new MemoryLRUCache(cacheRemovalListener, MAX_CACHE_SIZE);
+        this.lvsPutter = lvsPutter;
+        this.segmentPutter = segmentPutter;
+
+        this.cache = new MemoryLRUCache(
+            (key, cacheEntry) -> {
+                flushCacheEntry(lvsPutter, segmentPutter, key, cacheEntry);
+            },
+            MAX_CACHE_SIZE
+        );
     }
 
     interface LatestValueStorePutter {
@@ -60,16 +72,11 @@ public class RocksDBVersionedStoreRestoreHelper {
         final LatestValueStorePutter lvsPutter,
         final SegmentStorePutter segmentPutter
     ) {
-        return new RocksDBVersionedStoreRestoreHelper((key, cacheEntry) -> {
-            flushCacheEntry(lvsPutter, segmentPutter, key, cacheEntry);
-        });
+        return new RocksDBVersionedStoreRestoreHelper(lvsPutter, segmentPutter);
     }
 
     // TODO: optimize to write in batches instead of one at a time
-    void flushAll(
-        final LatestValueStorePutter lvsPutter,
-        final SegmentStorePutter segmentPutter
-    ) {
+    void flushAll() {
         Iterator<Map.Entry<Bytes, CacheEntry>> iter = cache.all();
         while (iter.hasNext()) {
             final Map.Entry<Bytes, CacheEntry> kv = iter.next();
@@ -100,12 +107,12 @@ public class RocksDBVersionedStoreRestoreHelper {
         }
 
         @Override
-        public byte[] getLatestValue(Bytes key) { // TODO: should this be typed as value and timestamp in order to avoid serializing/deserializing timestamp over and over?
+        public byte[] getLatestValue(Bytes key, boolean ignored) { // TODO: should this be typed as value and timestamp in order to avoid serializing/deserializing timestamp over and over?
             final CacheEntry entry = cache.get(key);
             final byte[] value;
             if (entry == null) {
                 // read from store
-                value = readOnlyDelegate.getLatestValue(key);
+                value = readOnlyDelegate.getLatestValue(key, true);
 
                 // add to cache
                 cache.put(key, new CacheEntry(new MaybeDirty<>(new CacheLatestValue(value), false)));
@@ -183,7 +190,7 @@ public class RocksDBVersionedStoreRestoreHelper {
         }
 
         @Override
-        public byte[] getFromSegment(Long segment, Bytes key) {
+        public byte[] getFromSegment(Long segment, Bytes key, boolean ignored) {
             // first check cache
             final CacheEntry entry = cache.get(key);
             if (entry == null) { // TODO: move this up / handle differently
@@ -201,7 +208,7 @@ public class RocksDBVersionedStoreRestoreHelper {
             if (delegateSegment == null) {
                 dbValue = null;
             } else {
-                dbValue = readOnlyDelegate.getFromSegment(delegateSegment, key);
+                dbValue = readOnlyDelegate.getFromSegment(delegateSegment, key, true);
             }
             entry.putSegment(segment, new MaybeDirty<>(new CacheSegmentValue(dbValue), false));
             return dbValue;
