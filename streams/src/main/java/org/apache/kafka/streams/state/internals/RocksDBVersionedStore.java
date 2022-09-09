@@ -361,7 +361,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
         metricsRecorder.init(ProcessorContextUtils.getMetricsImpl(context), context.taskId()); // TODO: where does this need to go? came from KeyValueSegments#openExisting()
 
-        latestValueStore.openDB(context.appConfigs(), context.stateDir()); // TODO: check
+        latestValueStore.openDB(context.appConfigs(), context.stateDir()); // TODO: check -- does this mean we actually don't need to relax the restriction that restore is allowed to take place before db is open?
         //latestValueStore.init(context, root);
         segmentStores.openExisting(context, observedStreamTime);
 
@@ -380,7 +380,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
                 @Override
                 public void finishRestore() {
-                    restoreHelper.flushAll();
+                    RocksDBVersionedStore.this.finishRestore();
                 }
             },
             () -> StoreQueryUtils.checkpointPosition(positionCheckpoint, position)
@@ -401,7 +401,8 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         init(StoreToProcessorContextAdapter.adapt(context), root);
     }
 
-    private void restoreBatch(final Collection<ConsumerRecord<byte[], byte[]>> records) {
+    // VisibleForTesting
+    void restoreBatch(final Collection<ConsumerRecord<byte[], byte[]>> records) {
         for (ConsumerRecord<byte[], byte[]> record : records) {
             putHelper(
                 latestValueSchema,
@@ -415,6 +416,11 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
                 ValueAndTimestamp.makeAllowNullable(record.value(), record.timestamp())
             );
         }
+    }
+
+    // VisibleForTesting
+    void finishRestore() {
+        restoreHelper.flushAll();
     }
 
     interface VersionedStoreClient<T> {

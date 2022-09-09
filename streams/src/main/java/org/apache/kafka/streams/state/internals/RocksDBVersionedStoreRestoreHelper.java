@@ -150,10 +150,10 @@ public class RocksDBVersionedStoreRestoreHelper {
 
         @Override
         public List<Long> getReverseSegments(long timestampFrom, Bytes key) {
-            final List<Long> dbSegments = readOnlyDelegate.getReverseSegments(timestampFrom, key).stream()
+            final List<Long> dbSegments = readOnlyDelegate.getReverseSegments(timestampFrom, key).stream() // TODO: should this be cached as well? I guess the implementation is quick, but that's not necessarily true in general
                 .map(readOnlyDelegate::getIdForSegment)
                 .collect(Collectors.toList());
-            if (cache.get(key) == null) {
+            if (cache.get(key) == null) { // TODO: this should never happen (latest value should've been inserted first)
                 return dbSegments;
             }
 
@@ -263,7 +263,8 @@ public class RocksDBVersionedStoreRestoreHelper {
         }
 
         List<Long> getReverseSegments(final long segmentId) {
-            return new ArrayList<>(segmentValues.tailMap(segmentId).keySet());
+            // head and not tail because the map is sorted in reverse order
+            return new ArrayList<>(segmentValues.headMap(segmentId, true).keySet());
         }
 
         void updateLatest(final MaybeDirty<CacheLatestValue> latestValue) {

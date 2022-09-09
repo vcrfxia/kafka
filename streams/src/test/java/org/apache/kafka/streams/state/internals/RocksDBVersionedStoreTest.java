@@ -7,6 +7,13 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.header.internals.RecordHeaders;
+import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.serialization.Serializer;
@@ -66,45 +73,6 @@ public class RocksDBVersionedStoreTest {
     @After
     public void after() {
         store.close();
-    }
-
-    private void putStore(final String key, final String value, final long timestamp) {
-        store.put(
-            new Bytes(key.getBytes(UTF_8)),
-            ValueAndTimestamp.makeAllowNullable(value == null ? null : value.getBytes(UTF_8), timestamp)
-        );
-    }
-
-    private String getValueFromStore(final String key) {
-        final ValueAndTimestamp<String> valueAndTimestamp = getFromStore(key);
-        return valueAndTimestamp == null ? null : valueAndTimestamp.value();
-    }
-
-    private String getValueFromStore(final String key, final long timestampTo) {
-        final ValueAndTimestamp<String> valueAndTimestamp = getFromStore(key, timestampTo);
-        return valueAndTimestamp == null ? null : valueAndTimestamp.value();
-    }
-
-    // TODO: de-dup from below
-    private ValueAndTimestamp<String> getFromStore(final String key) {
-        final ValueAndTimestamp<byte[]> valueAndTimestamp
-            = store.get(new Bytes(stringSerializer.serialize(null, key)));
-            //= store.get(new Bytes(key.getBytes(UTF_8)));
-        return valueAndTimestamp == null
-            ? null
-            : ValueAndTimestamp.make(
-            stringDeserializer.deserialize(null, valueAndTimestamp.value()),
-            valueAndTimestamp.timestamp());
-    }
-
-    private ValueAndTimestamp<String> getFromStore(final String key, final long timestampTo) {
-        final ValueAndTimestamp<byte[]> valueAndTimestamp
-            = store.get(new Bytes(stringSerializer.serialize(null, key)), timestampTo);
-        return valueAndTimestamp == null
-            ? null
-            : ValueAndTimestamp.make(
-                stringDeserializer.deserialize(null, valueAndTimestamp.value()),
-                valueAndTimestamp.timestamp());
     }
 
     @Test
@@ -404,7 +372,141 @@ public class RocksDBVersionedStoreTest {
         assertThat(timeFilter8, nullValue());
     }
 
-    // TODO: restore tests
+    @Test
+    public void shouldRestore() {
+        final List<DataRecord> records = new ArrayList<>();
+        records.add(new DataRecord("k", "vp20", SEGMENT_INTERVAL + 20));
+        records.add(new DataRecord("k", "vn10", SEGMENT_INTERVAL - 10));
+        records.add(new DataRecord("k", "vn1", SEGMENT_INTERVAL - 1));
+        records.add(new DataRecord("k", "vp1", SEGMENT_INTERVAL + 1));
+        records.add(new DataRecord("k", "vp10", SEGMENT_INTERVAL + 10));
+
+        store.restoreBatch(getChangelogRecords(records));
+        store.finishRestore();
+
+        final ValueAndTimestamp<String> latest = getFromStore("k");
+        assertThat(latest.value(), equalTo("vp20"));
+        assertThat(latest.timestamp(), equalTo(SEGMENT_INTERVAL + 20));
+
+        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
+        assertThat(timeFilter.value(), equalTo("vp20"));
+        assertThat(timeFilter.timestamp(), equalTo(SEGMENT_INTERVAL + 20));
+
+        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
+        assertThat(timeFilter1.value(), equalTo("vp10"));
+        assertThat(timeFilter1.timestamp(), equalTo(SEGMENT_INTERVAL + 10));
+
+        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 5);
+        assertThat(timeFilter2.value(), equalTo("vp1"));
+        assertThat(timeFilter2.timestamp(), equalTo(SEGMENT_INTERVAL + 1));
+
+        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL);
+        assertThat(timeFilter3.value(), equalTo("vn1"));
+        assertThat(timeFilter3.timestamp(), equalTo(SEGMENT_INTERVAL - 1));
+
+        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL - 1);
+        assertThat(timeFilter4.value(), equalTo("vn1"));
+        assertThat(timeFilter4.timestamp(), equalTo(SEGMENT_INTERVAL - 1));
+
+        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 5);
+        assertThat(timeFilter5.value(), equalTo("vn10"));
+        assertThat(timeFilter5.timestamp(), equalTo(SEGMENT_INTERVAL - 10));
+    }
+
+    @Test
+    public void shouldRestoreWithNulls() {
+        final List<DataRecord> records = new ArrayList<>();
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 20));
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 10));
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 1));
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 1));
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 10));
+        records.add(new DataRecord("k", "vp5", SEGMENT_INTERVAL + 5));
+        records.add(new DataRecord("k", "vn5", SEGMENT_INTERVAL - 5));
+        records.add(new DataRecord("k", "vn6", SEGMENT_INTERVAL - 6));
+
+        store.restoreBatch(getChangelogRecords(records));
+        store.finishRestore();
+
+        final ValueAndTimestamp<String> latest = getFromStore("k");
+        assertThat(latest, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
+        assertThat(timeFilter, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
+        assertThat(timeFilter1, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 6);
+        assertThat(timeFilter2.value(), equalTo("vp5"));
+        assertThat(timeFilter2.timestamp(), equalTo(SEGMENT_INTERVAL + 5));
+
+        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL + 2);
+        assertThat(timeFilter3, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL);
+        assertThat(timeFilter4, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 1);
+        assertThat(timeFilter5, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter6 = getFromStore("k", SEGMENT_INTERVAL - 5);
+        assertThat(timeFilter6.value(), equalTo("vn5"));
+        assertThat(timeFilter6.timestamp(), equalTo(SEGMENT_INTERVAL - 5));
+
+        final ValueAndTimestamp<String> timeFilter7 = getFromStore("k", SEGMENT_INTERVAL - 6);
+        assertThat(timeFilter7.value(), equalTo("vn6"));
+        assertThat(timeFilter7.timestamp(), equalTo(SEGMENT_INTERVAL - 6));
+
+        final ValueAndTimestamp<String> timeFilter8 = getFromStore("k", SEGMENT_INTERVAL - 8);
+        assertThat(timeFilter8, nullValue());
+    }
+
+    @Test
+    public void shouldRestoreMultipleBatches() {
+        final List<DataRecord> records = new ArrayList<>();
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 20));
+        records.add(new DataRecord("k", "vn10", SEGMENT_INTERVAL - 10));
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 1));
+
+        final List<DataRecord> moreRecords = new ArrayList<>();
+        moreRecords.add(new DataRecord("k", null, SEGMENT_INTERVAL + 1));
+        moreRecords.add(new DataRecord("k", "vp10", SEGMENT_INTERVAL + 10));
+        moreRecords.add(new DataRecord("k", null, SEGMENT_INTERVAL + 20));
+
+        store.restoreBatch(getChangelogRecords(records));
+        store.restoreBatch(getChangelogRecords(moreRecords));
+        store.finishRestore();
+
+        final ValueAndTimestamp<String> latest = getFromStore("k");
+        assertThat(latest, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
+        assertThat(timeFilter, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
+        assertThat(timeFilter1.value(), equalTo("vp10"));
+        assertThat(timeFilter1.timestamp(), equalTo(SEGMENT_INTERVAL + 10));
+
+        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 5);
+        assertThat(timeFilter2, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL + 2);
+        assertThat(timeFilter3, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL);
+        assertThat(timeFilter4, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 1);
+        assertThat(timeFilter5, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter6 = getFromStore("k", SEGMENT_INTERVAL - 5);
+        assertThat(timeFilter6.value(), equalTo("vn10"));
+        assertThat(timeFilter6.timestamp(), equalTo(SEGMENT_INTERVAL - 10));
+
+        final ValueAndTimestamp<String> timeFilter7 = getFromStore("k", SEGMENT_INTERVAL - 15);
+        assertThat(timeFilter7, nullValue());
+    }
 
     // TODO: prefix scan tests
 
@@ -413,4 +515,86 @@ public class RocksDBVersionedStoreTest {
     // TODO: tests for byte[0], empty string, and other non-null types
 
     // TODO: tests that repeat timestamps
+
+    private static byte[] getSerializedKey(final String key) {
+        return key.getBytes(UTF_8);
+    }
+
+    private static byte[] getSerializedValue(final String value) {
+        return value == null ? null : value.getBytes(UTF_8);
+    }
+
+    private void putStore(final String key, final String value, final long timestamp) {
+        store.put(
+            new Bytes(getSerializedKey(key)),
+            ValueAndTimestamp.makeAllowNullable(getSerializedValue(value), timestamp)
+        );
+    }
+
+    private String getValueFromStore(final String key) {
+        final ValueAndTimestamp<String> valueAndTimestamp = getFromStore(key);
+        return valueAndTimestamp == null ? null : valueAndTimestamp.value();
+    }
+
+    private String getValueFromStore(final String key, final long timestampTo) {
+        final ValueAndTimestamp<String> valueAndTimestamp = getFromStore(key, timestampTo);
+        return valueAndTimestamp == null ? null : valueAndTimestamp.value();
+    }
+
+    // TODO: de-dup from below
+    private ValueAndTimestamp<String> getFromStore(final String key) {
+        final ValueAndTimestamp<byte[]> valueAndTimestamp
+            = store.get(new Bytes(stringSerializer.serialize(null, key)));
+        //= store.get(new Bytes(key.getBytes(UTF_8)));
+        return valueAndTimestamp == null
+            ? null
+            : ValueAndTimestamp.make(
+            stringDeserializer.deserialize(null, valueAndTimestamp.value()),
+            valueAndTimestamp.timestamp());
+    }
+
+    private ValueAndTimestamp<String> getFromStore(final String key, final long timestampTo) {
+        final ValueAndTimestamp<byte[]> valueAndTimestamp
+            = store.get(new Bytes(stringSerializer.serialize(null, key)), timestampTo);
+        return valueAndTimestamp == null
+            ? null
+            : ValueAndTimestamp.make(
+            stringDeserializer.deserialize(null, valueAndTimestamp.value()),
+            valueAndTimestamp.timestamp());
+    }
+
+    private static class DataRecord {
+        final String key;
+        final String value;
+        final long timestamp;
+        DataRecord(String key, String value, long timestamp) {
+            this.key = key;
+            this.value = value;
+            this.timestamp = timestamp;
+        }
+    }
+
+    private static List<ConsumerRecord<byte[], byte[]>> getChangelogRecords(List<DataRecord> data) {
+        List<ConsumerRecord<byte[], byte[]>> records = new ArrayList<>();
+
+        for (DataRecord d : data) {
+            final byte[] key = getSerializedKey(d.key);
+            final byte[] value = getSerializedValue(d.value);
+            records.add(new ConsumerRecord<>(
+                "",
+                0,
+                0L,
+                d.timestamp,
+                TimestampType.CREATE_TIME,
+                key.length,
+                value == null ? 0 : value.length,
+                key,
+                value,
+                new RecordHeaders(),
+                Optional.empty()
+            ));
+        }
+
+        return records;
+    }
 }
