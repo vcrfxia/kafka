@@ -14,13 +14,13 @@ import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
 
-public class ChangeLoggingTimeAwareKeyValueBytesStore
-        extends WrappedStateStore<VersionedKeyValueStore<Bytes, byte[]>, byte[], ValueAndTimestamp<byte[]>>
+public class ChangeLoggingTimeAwareKeyValueBytesStore<S extends VersionedKeyValueStore<Bytes, byte[]>>
+        extends WrappedStateStore<S, byte[], ValueAndTimestamp<byte[]>>
         implements VersionedKeyValueStore<Bytes, byte[]> {
 
     InternalProcessorContext context;
 
-    ChangeLoggingTimeAwareKeyValueBytesStore(final VersionedKeyValueStore<Bytes, byte[]> inner) {
+    ChangeLoggingTimeAwareKeyValueBytesStore(final S inner) {
         super(inner);
     }
 
@@ -144,7 +144,7 @@ public class ChangeLoggingTimeAwareKeyValueBytesStore
         wrapped().deleteHistory(timestampTo);
     }
 
-    void log(final Bytes key, final ValueAndTimestamp<byte[]> value) {
+    protected void log(final Bytes key, final ValueAndTimestamp<byte[]> value) {
         // TODO(note): this logic stays pretty much the same but need to figure out where to change configs for the topic
         context.logChange(
             name(),

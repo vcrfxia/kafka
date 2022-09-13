@@ -24,14 +24,13 @@ import org.apache.kafka.streams.processor.internals.metrics.TaskMetrics;
 import org.apache.kafka.streams.query.Position;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
-import org.apache.kafka.streams.state.VersionedKeyValueStore;
 import org.apache.kafka.streams.state.internals.RocksDBVersionedStoreSegmentValueFormatter.SegmentValue;
 import org.apache.kafka.streams.state.internals.RocksDBVersionedStoreSegmentValueFormatter.SegmentValue.SegmentSearchResult;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte[]> {
+public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<Bytes, byte[]> {
     private static final Logger LOG = LoggerFactory.getLogger(RocksDBVersionedStore.class);
     private static final long SENTINEL_TIMESTAMP = -1L;
 
@@ -421,6 +420,24 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     // VisibleForTesting
     void finishRestore() {
         restoreHelper.flushAll();
+    }
+
+    @Override
+    public void replaceFromCache(final Bytes key, final ValueAndTimestamp<byte[]> value, long nextTimestamp) {
+        // put bypassing latest value, update next timestamp
+        // TODO
+    }
+
+    @Override
+    public void bypassCache(final Bytes key, final ValueAndTimestamp<byte[]> value, final long nextTimestamp) {
+        // put bypassing latest value, next timestamp should not need an update
+        // TODO
+    }
+
+    @Override
+    public void newKeyInsertedToCache(final Bytes key, long nextTimestamp) {
+        // move latest value to segment, update next timestamp in the process
+        // TODO
     }
 
     interface VersionedStoreClient<T> {

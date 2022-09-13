@@ -42,6 +42,7 @@ public class CachingTimeAwareKeyValueStore
 
     private static final Logger LOG = LoggerFactory.getLogger(CachingTimeAwareKeyValueStore.class);
 
+    private final CacheableVersionedStoreCallbacks storeCallbacks;
     private CacheFlushListener<byte[], ValueAndTimestamp<byte[]>> flushListener;
     private boolean sendOldValues;
     private String cacheName;
@@ -50,9 +51,19 @@ public class CachingTimeAwareKeyValueStore
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Position position;
 
-    CachingTimeAwareKeyValueStore(final VersionedKeyValueStore<Bytes, byte[]> inner) {
+    interface CacheableVersionedStoreCallbacks {
+        void replaceFromCache(Bytes key, ValueAndTimestamp<byte[]> value, long nextTimestamp);
+        void bypassCache(Bytes key, ValueAndTimestamp<byte[]> value, long nextTimestamp);
+        void newKeyInsertedToCache(Bytes key, long nextTimestamp);
+    }
+
+    CachingTimeAwareKeyValueStore(
+        final VersionedKeyValueStore<Bytes, byte[]> inner,
+        final CacheableVersionedStoreCallbacks storeCallbacks
+    ) {
         super(inner);
-        position = Position.emptyPosition();
+        this.storeCallbacks = storeCallbacks;
+        this.position = Position.emptyPosition();
     }
 
     @SuppressWarnings("deprecation") // This can be removed when it's removed from the interface.
@@ -185,10 +196,10 @@ public class CachingTimeAwareKeyValueStore
                 if (value.timestamp() > oldEntry.context().timestamp()) {
                     // insert into cache and flush old entry
                     putToCache(key, value, true);
-                    replaceFromCache(key, ValueAndTimestamp.makeAllowNullable(oldEntry.value(), oldEntry.context().timestamp()), value.timestamp()); // i.e., put to store bypassing latest value
+                    storeCallbacks.replaceFromCache(key, ValueAndTimestamp.makeAllowNullable(oldEntry.value(), oldEntry.context().timestamp()), value.timestamp()); // i.e., put to store bypassing latest value
                 } else if (value.timestamp() < oldEntry.context().timestamp()) {
                     // insert into underlying store
-                    bypassCache(key, value); // i.e., put to store bypassing latest value
+                    storeCallbacks.bypassCache(key, value, oldEntry.context().timestamp()); // i.e., put to store bypassing latest value
                 } else {
                     // update cache without affecting underlying store
                     putToCache(key, value, true);
@@ -197,10 +208,10 @@ public class CachingTimeAwareKeyValueStore
                 if (value.timestamp() > oldEntry.context().timestamp()) {
                     // insert into cache and instruct underlying store to move latest value
                     putToCache(key, value, true);
-                    newKeyInsertedToCache(value.timestamp()); // i.e., move latest value into segment
+                    storeCallbacks.newKeyInsertedToCache(key, value.timestamp()); // i.e., move latest value into segment
                 } else if (value.timestamp() < oldEntry.context().timestamp()) {
                     // insert into underlying store
-                    bypassCache(key, value); // i.e., put to store bypassing latest value
+                    storeCallbacks.bypassCache(key, value, oldEntry.context().timestamp()); // i.e., put to store bypassing latest value
                 } else {
                     // insert into underlying store and update cache as clean
                     putToCache(key, value, false);
@@ -214,11 +225,11 @@ public class CachingTimeAwareKeyValueStore
                 if (value.timestamp() > oldValue.timestamp()) {
                     // insert into cache and instruct underlying store to move latest value
                     putToCache(key, value, true);
-                    newKeyInsertedToCache(value.timestamp()); // i.e., move latest value into segment
+                    storeCallbacks.newKeyInsertedToCache(key, value.timestamp()); // i.e., move latest value into segment
                 } else if (value.timestamp() < oldValue.timestamp()) {
                     // insert into underlying store, update cache with latest (clean)
                     putToCacheNonContext(key, oldValue, false);
-                    bypassCache(key, value); // i.e., put to store bypassing latest value (known to be safe here)
+                    storeCallbacks.bypassCache(key, value, oldValue.timestamp()); // i.e., put to store bypassing latest value (known to be safe here)
                 } else {
                     // insert into underlying store, update cache with latest (clean)
                     putToCache(key, value, false);

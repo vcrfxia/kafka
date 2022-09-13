@@ -24,6 +24,7 @@ import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
 
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
+import org.apache.kafka.streams.state.internals.CachingTimeAwareKeyValueStore.CacheableVersionedStoreCallbacks;
 
 public class VersionedKeyValueStoreBuilder<K, V>
     extends AbstractStoreBuilder<K, ValueAndTimestamp<V>, TimestampedKeyValueStore<K, V>> {
@@ -63,14 +64,34 @@ public class VersionedKeyValueStoreBuilder<K, V>
         if (!enableCaching) {
             return inner;
         }
-        return new CachingTimeAwareKeyValueStore(inner);
+        if (!(inner instanceof CacheableVersionedKeyValueStore)) {
+            throw new IllegalArgumentException("cannot enable caching for a versioned store which does not support it");
+        }
+        return new CachingTimeAwareKeyValueStore(inner, new CacheableVersionedStoreCallbacks() {
+            @Override
+            public void replaceFromCache(Bytes key, ValueAndTimestamp<byte[]> value, long nextTimestamp) {
+                ((CacheableVersionedKeyValueStore<Bytes, byte[]>) inner).replaceFromCache(key, value, nextTimestamp);
+            }
+
+            @Override
+            public void bypassCache(Bytes key, ValueAndTimestamp<byte[]> value, long nextTimestamp) {
+                ((CacheableVersionedKeyValueStore<Bytes, byte[]>) inner).bypassCache(key, value, nextTimestamp);
+            }
+
+            @Override
+            public void newKeyInsertedToCache(Bytes key, long nextTimestamp) {
+                ((CacheableVersionedKeyValueStore<Bytes, byte[]>) inner).newKeyInsertedToCache(key, nextTimestamp);
+            }
+        });
     }
 
     private VersionedKeyValueStore<Bytes, byte[]> maybeWrapLogging(final VersionedKeyValueStore<Bytes, byte[]> inner) {
         if (!enableLogging) {
             return inner;
         }
-        return new ChangeLoggingTimeAwareKeyValueBytesStore(inner);
+        return inner instanceof CacheableVersionedKeyValueStore
+            ? new CacheableChangeLoggingTimeAwareKeyValueBytesStore((CacheableVersionedKeyValueStore<Bytes, byte[]>) inner)
+            : new ChangeLoggingTimeAwareKeyValueBytesStore<>(inner);
     }
 
     // TODO(note): same as KeyValueBytesStoreSupplier except with ValueAndTimestamp already present.
