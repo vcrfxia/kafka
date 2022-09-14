@@ -172,7 +172,10 @@ public class MeteredTimeAwareKeyValueStore<K, V>
                     record.withKey(serdes.keyFrom(record.key()))
                         .withValue(new Change<>(
                             ValueAndTimestamp.makeAllowNullable(record.value().newValue.value() != null ? serdes.valueFrom(record.value().newValue.value()) : null, record.value().newValue.timestamp()),
-                            ValueAndTimestamp.makeAllowNullable(record.value().oldValue.value() != null ? serdes.valueFrom(record.value().oldValue.value()) : null, record.value().oldValue.timestamp())
+                            ValueAndTimestamp.makeAllowNullable(
+                                record.value().oldValue == null || record.value().oldValue.value() == null ? null : serdes.valueFrom(record.value().oldValue.value()),
+                                record.value().oldValue == null ? -1 : record.value().oldValue.timestamp() // TODO: extract constant. is it expected that oldValue could be null? this wasn't the case before the new cache implementation was added
+                            )
                         ))
                 ),
                 sendOldValues);
@@ -398,7 +401,7 @@ public class MeteredTimeAwareKeyValueStore<K, V>
     protected ValueAndTimestamp<byte[]> innerValue(final ValueAndTimestamp<V> value) {
         return value == null
             ? ValueAndTimestamp.makeAllowNullable(null, context.timestamp()) // TODO: check that this is always populated
-            : ValueAndTimestamp.make(serdes.rawValue(value.value()), value.timestamp());
+            : ValueAndTimestamp.makeAllowNullable(serdes.rawValue(value.value()), value.timestamp());
     }
 
     protected Bytes keyBytes(final K key) {
