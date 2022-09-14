@@ -78,7 +78,13 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
     // valueAndTimestamp should never come in as null, should always be a null wrapped with a timestamp
     @Override
     public void put(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp) {
-        observedStreamTime = putHelper(
+        LOG.info(String.format("vxia debug: put: key (%s), value (%s), ts (%d)",
+            key.toString(),
+            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
+            valueAndTimestamp.timestamp()
+        ));
+
+        observedStreamTime = putInternal(
             latestValueSchema,
             segmentValueSchema,
             versionedStoreClient,
@@ -402,8 +408,10 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
 
     // VisibleForTesting
     void restoreBatch(final Collection<ConsumerRecord<byte[], byte[]>> records) {
+        LOG.info(String.format("vxia debug: restoreBatch: records.size() (%d)", records.size()));
+
         for (ConsumerRecord<byte[], byte[]> record : records) {
-            putHelper(
+            putInternal(
                 latestValueSchema,
                 segmentValueSchema,
                 versionedStoreRestoreClient,
@@ -423,21 +431,85 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
     }
 
     @Override
-    public void replaceFromCache(final Bytes key, final ValueAndTimestamp<byte[]> value, long nextTimestamp) {
+    public void replaceFromCache(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp, long nextTimestamp) {
         // put bypassing latest value, update next timestamp
-        // TODO
+        LOG.info(String.format("vxia debug: replaceFromCache: key (%s), value (%s), ts (%d), nextTs (%d)",
+            key.toString(),
+            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
+            valueAndTimestamp.timestamp(),
+            nextTimestamp
+        ));
+
+        bypassCacheInternal(key, valueAndTimestamp, nextTimestamp);
     }
 
     @Override
-    public void bypassCache(final Bytes key, final ValueAndTimestamp<byte[]> value, final long nextTimestamp) {
+    public void bypassCache(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp, final long nextTimestamp) {
         // put bypassing latest value, next timestamp should not need an update
-        // TODO
+        LOG.info(String.format("vxia debug: bypassCache: key (%s), value (%s), ts (%d), nextTs (%d)",
+            key.toString(),
+            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
+            valueAndTimestamp.timestamp(),
+            nextTimestamp
+        ));
+
+        bypassCacheInternal(key, valueAndTimestamp, nextTimestamp);
+    }
+
+    private void bypassCacheInternal(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp, final long nextTimestamp) {
+        // TODO: this update might only be necessary from replaceFromCache() and not bypassCache()?
+        observedStreamTime = Math.max(observedStreamTime, nextTimestamp);
+
+        long foundTs = nextTimestamp;
+        // bypass latest value store
+        // search in segments
+        final PutStatus status = putSegments(
+            segmentValueSchema,
+            versionedStoreClient,
+            segmentStores::segmentId,
+            context,
+            observedStreamTime,
+            historyRetention,
+            key,
+            valueAndTimestamp,
+            foundTs
+        );
+        if (status.isComplete) {
+            return;
+        } else {
+            foundTs = status.foundTs;
+        }
+
+        // ran out of segments to search. insert into tentative segment.
+        putFallThrough(
+            latestValueSchema,
+            segmentValueSchema,
+            versionedStoreClient,
+            segmentStores::segmentId,
+            context,
+            observedStreamTime,
+            key,
+            valueAndTimestamp,
+            foundTs
+        );
     }
 
     @Override
     public void newKeyInsertedToCache(final Bytes key, long nextTimestamp) {
         // move latest value to segment, update next timestamp in the process
-        // TODO
+        LOG.info(String.format("vxia debug: newKeyInsertedToCache: nextTs (%d)", nextTimestamp));
+
+        observedStreamTime = putInternal(
+          latestValueSchema,
+          segmentValueSchema,
+          versionedStoreClient,
+          segmentStores::segmentId,
+          context,
+          observedStreamTime,
+          historyRetention,
+          key,
+          ValueAndTimestamp.makeAllowNullable(null, nextTimestamp)
+        );
     }
 
     interface VersionedStoreClient<T> {
@@ -513,7 +585,7 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
     }
 
     // returns new stream time
-    static <T> long putHelper(
+    private static <T> long putInternal(
         final LatestValueSchema latestValueSchema,
         final SegmentValueSchema segmentValueSchema,
         final VersionedStoreClient<T> versionedStoreClient,
@@ -524,18 +596,86 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
         final Bytes key,
         final ValueAndTimestamp<byte[]> valueAndTimestamp
     ) {
-        LOG.info(String.format("vxia debug: put: key (%s), value (%s), ts (%d)",
-            key.toString(),
-            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
-            valueAndTimestamp.timestamp()
-        ));
+        // TODO(note): inspiration from AbstractDualSchemaRocksDBSegmentedBytesStore
+        final long newStreamTime = Math.max(observedStreamTime, valueAndTimestamp.timestamp());
 
-        // TODO: complicated logic here. see AbstractDualSchemaRocksDBSegmentedBytesStore for inspiration
-        final long timestamp = valueAndTimestamp.timestamp();
-        final long newStreamTime = Math.max(observedStreamTime, timestamp);
-
-        // check latest value store
         long foundTs = SENTINEL_TIMESTAMP; // tracks smallest timestamp larger than insertion timestamp seen so far
+        // check latest value store
+        PutStatus status = putLatestValueStore(
+            latestValueSchema,
+            segmentValueSchema,
+            versionedStoreClient,
+            segmentIdGetter,
+            context,
+            observedStreamTime,
+            key,
+            valueAndTimestamp,
+            foundTs
+        );
+        if (status.isComplete) {
+            return newStreamTime;
+        } else {
+            foundTs = status.foundTs;
+        }
+
+        // continue search in segments
+        status = putSegments(
+            segmentValueSchema,
+            versionedStoreClient,
+            segmentIdGetter,
+            context,
+            observedStreamTime,
+            historyRetention,
+            key,
+            valueAndTimestamp,
+            foundTs
+        );
+        if (status.isComplete) {
+            return newStreamTime;
+        } else {
+            foundTs = status.foundTs;
+        }
+
+        // ran out of segments to search. insert into tentative segment.
+        putFallThrough(
+            latestValueSchema,
+            segmentValueSchema,
+            versionedStoreClient,
+            segmentIdGetter,
+            context,
+            observedStreamTime,
+            key,
+            valueAndTimestamp,
+            foundTs
+        );
+
+        return newStreamTime;
+    }
+
+    private static class PutStatus {
+        final boolean isComplete;
+        final long foundTs;
+
+        PutStatus(final boolean isComplete, final long foundTs) {
+            this.isComplete = isComplete;
+            this.foundTs = foundTs;
+        }
+    }
+
+    private static <T> PutStatus putLatestValueStore(
+        final LatestValueSchema latestValueSchema,
+        final SegmentValueSchema segmentValueSchema,
+        final VersionedStoreClient<T> versionedStoreClient,
+        final Function<Long, Long> segmentIdGetter,
+        final ProcessorContext context,
+        final long observedStreamTime,
+        final Bytes key,
+        final ValueAndTimestamp<byte[]> valueAndTimestamp,
+        long prevFoundTs
+    ) {
+        final long timestamp = valueAndTimestamp.timestamp();
+        long foundTs = prevFoundTs;
+
         final byte[] latestValue = versionedStoreClient.getLatestValue(key);
         if (latestValue != null) {
             foundTs = latestValueSchema.getTimestamp(latestValue);
@@ -569,11 +709,26 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                 } else {
                     versionedStoreClient.deleteLatestValue(key);
                 }
-                return newStreamTime;
+                return new PutStatus(true, foundTs);
             }
         }
+        return new PutStatus(false, foundTs);
+    }
 
-        // continue search in segments
+    private static <T> PutStatus putSegments(
+        final SegmentValueSchema segmentValueSchema,
+        final VersionedStoreClient<T> versionedStoreClient,
+        final Function<Long, Long> segmentIdGetter,
+        final ProcessorContext context,
+        final long observedStreamTime,
+        final long historyRetention,
+        final Bytes key,
+        final ValueAndTimestamp<byte[]> valueAndTimestamp,
+        final long prevFoundTs
+    ) {
+        final long timestamp = valueAndTimestamp.timestamp();
+        long foundTs = prevFoundTs;
+
         final List<T> segments = versionedStoreClient.getReverseSegments(timestamp, key);
         for (final T segment : segments) {
             final byte[] segmentValue = versionedStoreClient.getFromSegment(segment, key);
@@ -592,7 +747,7 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                     final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
                     sv.insertAsEarliest(timestamp, valueAndTimestamp.value());
                     versionedStoreClient.putToSegment(segment, key, sv.serialize());
-                    return newStreamTime;
+                    return new PutStatus(true, foundTs);
                 }
 
                 final long minFoundTs = segmentValueSchema.getMinTimestamp(segmentValue);
@@ -632,14 +787,14 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                         sv.insert(timestamp, valueAndTimestamp.value(), searchResult.index());
                         versionedStoreClient.putToSegment(segment, key, sv.serialize());
                     }
-                    return newStreamTime;
+                    return new PutStatus(true, foundTs);
                 }
 
                 // TODO: we can technically remove this
                 if (minFoundTs < observedStreamTime - historyRetention) {
                     // the record being inserted does not affect version history. discard and return
                     LOG.warn("Skipping record for expired put.");
-                    return newStreamTime;
+                    return new PutStatus(true, foundTs);
                 }
 
                 // it's possible the record belongs in this segment, but also possible it belongs
@@ -649,8 +804,22 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                 // TODO: we could skip past some segments according to minFoundTs. add this optimization later
             }
         }
+        return new PutStatus(false, foundTs);
+    }
 
-        // ran out of segments to search. insert into tentative segment.
+    private static <T> void putFallThrough(
+        final LatestValueSchema latestValueSchema,
+        final SegmentValueSchema segmentValueSchema,
+        final VersionedStoreClient<T> versionedStoreClient,
+        final Function<Long, Long> segmentIdGetter,
+        final ProcessorContext context,
+        final long observedStreamTime,
+        final Bytes key,
+        final ValueAndTimestamp<byte[]> valueAndTimestamp,
+        final long foundTs
+    ) {
+        final long timestamp = valueAndTimestamp.timestamp();
+
         if (foundTs == SENTINEL_TIMESTAMP) {
             // insert into latest value store
             if (valueAndTimestamp.value() != null) {
@@ -661,7 +830,7 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                     segmentIdGetter.apply(timestamp), context, observedStreamTime);
                 if (segment == null) {
                     LOG.warn("Skipping record for expired put.");
-                    return newStreamTime;
+                    return;
                 }
 
                 final byte[] segmentValue = versionedStoreClient.getFromSegment(segment, key);
@@ -686,7 +855,7 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                 segmentIdGetter.apply(foundTs), context, observedStreamTime);
             if (segment == null) {
                 LOG.warn("Skipping record for expired put.");
-                return newStreamTime;
+                return;
             }
 
             final byte[] segmentValue = versionedStoreClient.getFromSegment(segment, key);
@@ -727,7 +896,6 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                 }
             }
         }
-        return newStreamTime;
     }
 
     // TODO: convert to interface, move elsewhere, unify implementation with elsewhere?
