@@ -680,26 +680,28 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
         if (latestValue != null) {
             foundTs = latestValueSchema.getTimestamp(latestValue);
             if (timestamp >= foundTs) {
-                // move existing latest value into segment
-                final long segmentId = segmentIdGetter.apply(timestamp);
-                final T segment = versionedStoreClient.getOrCreateSegmentIfLive(segmentId, context, observedStreamTime);
-                if (segment == null) {
-                    LOG.info("vxia debug: Not moving existing latest value to segment for old update.");
-                } else {
-                    final byte[] foundValue = latestValueSchema.getValue(latestValue);
-                    final byte[] segmentValueBytes = versionedStoreClient.getFromSegment(segment, key);
-                    if (segmentValueBytes == null) {
-                        versionedStoreClient.putToSegment(
-                            segment,
-                            key,
-                            segmentValueSchema
-                                .newSegmentValueWithRecord(foundValue, foundTs, timestamp)
-                                .serialize()
-                        );
+                if (timestamp > foundTs) {
+                    // move existing latest value into segment
+                    final long segmentId = segmentIdGetter.apply(timestamp);
+                    final T segment = versionedStoreClient.getOrCreateSegmentIfLive(segmentId, context, observedStreamTime);
+                    if (segment == null) {
+                        LOG.info("vxia debug: Not moving existing latest value to segment for old update.");
                     } else {
-                        final SegmentValue segmentValue = segmentValueSchema.deserialize(segmentValueBytes);
-                        segmentValue.insertAsLatest(foundTs, timestamp, foundValue);
-                        versionedStoreClient.putToSegment(segment, key, segmentValue.serialize());
+                        final byte[] foundValue = latestValueSchema.getValue(latestValue);
+                        final byte[] segmentValueBytes = versionedStoreClient.getFromSegment(segment, key);
+                        if (segmentValueBytes == null) {
+                            versionedStoreClient.putToSegment(
+                                segment,
+                                key,
+                                segmentValueSchema
+                                    .newSegmentValueWithRecord(foundValue, foundTs, timestamp)
+                                    .serialize()
+                            );
+                        } else {
+                            final SegmentValue segmentValue = segmentValueSchema.deserialize(segmentValueBytes);
+                            segmentValue.insertAsLatest(foundTs, timestamp, foundValue);
+                            versionedStoreClient.putToSegment(segment, key, segmentValue.serialize());
+                        }
                     }
                 }
 
@@ -737,8 +739,7 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                 if (foundNextTs <= timestamp) {
                     // this segment (and all earlier segments) does not contain records affected by
                     // this put. insert into the tentativeSegmentId and conclude the procedure.
-                    // (break to use same procedure "insert into tentative segment" as below)
-                    break;
+                    return new PutStatus(false, foundTs);
                 }
 
                 if (segmentValueSchema.isEmpty(segmentValue)) {
@@ -761,31 +762,37 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                     final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
                     final SegmentSearchResult searchResult = sv.find(timestamp, writeToOlderSegmentNeeded);
 
-                    if (writeToOlderSegmentNeeded) {
-                        // existing record needs to be moved to an older segment. do this first.
-                        final T olderSegment = versionedStoreClient
-                            .getOrCreateSegmentIfLive(segmentIdForTimestamp, context, observedStreamTime);
-                        final byte[] olderSegmentValue = versionedStoreClient.getFromSegment(olderSegment, key);
-                        if (olderSegmentValue == null) {
-                            versionedStoreClient.putToSegment(
-                                olderSegment,
-                                key,
-                                segmentValueSchema.newSegmentValueWithRecord(
-                                    searchResult.value(), searchResult.validFrom(), timestamp
-                                ).serialize()
-                            );
-                        } else {
-                            final SegmentValue olderSv = segmentValueSchema.deserialize(olderSegmentValue);
-                            olderSv.insertAsLatest(searchResult.validFrom(), timestamp, searchResult.value());
-                            versionedStoreClient.putToSegment(olderSegment, key, olderSv.serialize());
-                        }
-
-                        // update in newer segment (replace the record that was just moved with the new one)
+                    if (searchResult.validFrom() == timestamp) {
+                        // this put() replaces an existing entry, rather than adding a new one
                         sv.updateRecord(timestamp, valueAndTimestamp.value(), searchResult.index());
                         versionedStoreClient.putToSegment(segment, key, sv.serialize());
                     } else {
-                        sv.insert(timestamp, valueAndTimestamp.value(), searchResult.index());
-                        versionedStoreClient.putToSegment(segment, key, sv.serialize());
+                        if (writeToOlderSegmentNeeded) {
+                            // existing record needs to be moved to an older segment. do this first.
+                            final T olderSegment = versionedStoreClient
+                                .getOrCreateSegmentIfLive(segmentIdForTimestamp, context, observedStreamTime);
+                            final byte[] olderSegmentValue = versionedStoreClient.getFromSegment(olderSegment, key);
+                            if (olderSegmentValue == null) {
+                                versionedStoreClient.putToSegment(
+                                    olderSegment,
+                                    key,
+                                    segmentValueSchema.newSegmentValueWithRecord(
+                                        searchResult.value(), searchResult.validFrom(), timestamp
+                                    ).serialize()
+                                );
+                            } else {
+                                final SegmentValue olderSv = segmentValueSchema.deserialize(olderSegmentValue);
+                                olderSv.insertAsLatest(searchResult.validFrom(), timestamp, searchResult.value());
+                                versionedStoreClient.putToSegment(olderSegment, key, olderSv.serialize());
+                            }
+
+                            // update in newer segment (replace the record that was just moved with the new one)
+                            sv.updateRecord(timestamp, valueAndTimestamp.value(), searchResult.index());
+                            versionedStoreClient.putToSegment(segment, key, sv.serialize());
+                        } else {
+                            sv.insert(timestamp, valueAndTimestamp.value(), searchResult.index());
+                            versionedStoreClient.putToSegment(segment, key, sv.serialize());
+                        }
                     }
                     return new PutStatus(true, foundTs);
                 }
@@ -838,13 +845,17 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                     versionedStoreClient.putToSegment(segment, key, segmentValueSchema.newSegmentValueWithTombstone(timestamp).serialize());
                 } else {
                     // insert as latest, since foundTs = sentinel means nothing later exists
-                    final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
-                    sv.insertAsLatest(
-                        segmentValueSchema.getNextTimestamp(segmentValue),
-                        timestamp,
-                        null
-                    );
-                    versionedStoreClient.putToSegment(segment, key, sv.serialize());
+                    if (segmentValueSchema.getNextTimestamp(segmentValue) != timestamp) {
+                        // next timestamp equal to put() timestamp already represents a tombstone,
+                        // so no additional insertion is needed in that case
+                        final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
+                        sv.insertAsLatest(
+                            segmentValueSchema.getNextTimestamp(segmentValue),
+                            timestamp,
+                            null
+                        );
+                        versionedStoreClient.putToSegment(segment, key, sv.serialize());
+                    }
                 }
             }
         } else {
@@ -872,8 +883,9 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                     );
                 }
             } else {
+                final long foundNextTs = segmentValueSchema.getNextTimestamp(segmentValue);
                 if (segmentValueSchema.isEmpty(segmentValue)
-                    && segmentValueSchema.getNextTimestamp(segmentValue) < timestamp) {
+                    && foundNextTs < timestamp) {
                     // insert as latest into empty segment
                     final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
                     sv.insertAsLatest(
@@ -882,10 +894,17 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                         valueAndTimestamp.value()
                     );
                     versionedStoreClient.putToSegment(segment, key, sv.serialize());
+                } else if (segmentValueSchema.isEmpty(segmentValue) && foundNextTs == timestamp) {
+                    if (valueAndTimestamp.value() != null) {
+                        // replace tombstone with non-empty record
+                        versionedStoreClient.putToSegment(segment, key, segmentValueSchema.newSegmentValueWithRecord(
+                            valueAndTimestamp.value(), timestamp, foundTs
+                        ).serialize());
+                    }
                 } else {
                     if (!segmentValueSchema.isEmpty(segmentValue)
-                        && segmentValueSchema.getMinTimestamp(segmentValue) < timestamp) { // TODO: what about equality case? general issue that needs to be patched throughout the code
-                        throw new IllegalStateException(
+                        && segmentValueSchema.getMinTimestamp(segmentValue) <= timestamp) {
+                        throw new IllegalStateException( // TODO: is this assumption actually correct?
                             "Incorrect assumption about fall-through insertion always being earliest");
                     }
 

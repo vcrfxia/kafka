@@ -252,6 +252,64 @@ public class RocksDBVersionedStoreTest {
     }
 
     @Test
+    public void shouldPutRepeatTimestampAsLatest() {
+        putStore("k", "to_be_replaced", BASE_TIMESTAMP);
+        putStore("k", "b", BASE_TIMESTAMP);
+
+        ValueAndTimestamp<String> latest = getFromStore("k");
+        assertThat(latest.value(), equalTo("b"));
+        assertThat(latest.timestamp(), equalTo(BASE_TIMESTAMP));
+        ValueAndTimestamp<String> timeFilter = getFromStore("k", BASE_TIMESTAMP);
+        assertThat(timeFilter.value(), equalTo("b"));
+        assertThat(timeFilter.timestamp(), equalTo(BASE_TIMESTAMP));
+
+        putStore("k", null, BASE_TIMESTAMP);
+
+        latest = getFromStore("k");
+        assertThat(latest, nullValue());
+        timeFilter = getFromStore("k", BASE_TIMESTAMP);
+        assertThat(timeFilter, nullValue());
+
+        putStore("k", null, BASE_TIMESTAMP);
+
+        latest = getFromStore("k");
+        assertThat(latest, nullValue());
+        timeFilter = getFromStore("k", BASE_TIMESTAMP);
+        assertThat(timeFilter, nullValue());
+
+        putStore("k", "b", BASE_TIMESTAMP);
+
+        latest = getFromStore("k");
+        assertThat(latest.value(), equalTo("b"));
+        assertThat(latest.timestamp(), equalTo(BASE_TIMESTAMP));
+        timeFilter = getFromStore("k", BASE_TIMESTAMP);
+        assertThat(timeFilter.value(), equalTo("b"));
+        assertThat(timeFilter.timestamp(), equalTo(BASE_TIMESTAMP));
+    }
+
+    @Test
+    public void shouldPutRepeatTimestamps() {
+        putStore("k", "to_be_replaced", SEGMENT_INTERVAL + 20);
+        putStore("k", null, SEGMENT_INTERVAL - 10);
+        putStore("k", "to_be_replaced", SEGMENT_INTERVAL - 10);
+        putStore("k", null, SEGMENT_INTERVAL - 10);
+        putStore("k", "to_be_replaced", SEGMENT_INTERVAL - 1);
+        putStore("k", "to_be_replaced", SEGMENT_INTERVAL + 1);
+        putStore("k", null, SEGMENT_INTERVAL - 1);
+        putStore("k", null, SEGMENT_INTERVAL + 1);
+        putStore("k", null, SEGMENT_INTERVAL + 10);
+        putStore("k", null, SEGMENT_INTERVAL + 5);
+        putStore("k", "vp5", SEGMENT_INTERVAL + 5);
+        putStore("k", "to_be_replaced", SEGMENT_INTERVAL - 5);
+        putStore("k", "vn5", SEGMENT_INTERVAL - 5);
+        putStore("k", null, SEGMENT_INTERVAL + 20);
+        putStore("k", "vn6", SEGMENT_INTERVAL - 6);
+        store.flush(); // ?
+
+        verifySet4();
+    }
+
+    @Test
     public void shouldPutIntoMultipleSegments() {
         putStore("k", null, SEGMENT_INTERVAL - 20);
         putStore("k", "vn10", SEGMENT_INTERVAL - 10);
@@ -260,34 +318,7 @@ public class RocksDBVersionedStoreTest {
         putStore("k", "vp10", SEGMENT_INTERVAL + 10);
         putStore("k", null, SEGMENT_INTERVAL + 20);
 
-        final ValueAndTimestamp<String> latest = getFromStore("k");
-        assertThat(latest, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
-        assertThat(timeFilter, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
-        assertThat(timeFilter1.value(), equalTo("vp10"));
-        assertThat(timeFilter1.timestamp(), equalTo(SEGMENT_INTERVAL + 10));
-
-        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 5);
-        assertThat(timeFilter2, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL + 2);
-        assertThat(timeFilter3, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL);
-        assertThat(timeFilter4, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 1);
-        assertThat(timeFilter5, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter6 = getFromStore("k", SEGMENT_INTERVAL - 5);
-        assertThat(timeFilter6.value(), equalTo("vn10"));
-        assertThat(timeFilter6.timestamp(), equalTo(SEGMENT_INTERVAL - 10));
-
-        final ValueAndTimestamp<String> timeFilter7 = getFromStore("k", SEGMENT_INTERVAL - 15);
-        assertThat(timeFilter7, nullValue());
+        verifySet2();
     }
 
     @Test
@@ -298,33 +329,7 @@ public class RocksDBVersionedStoreTest {
         putStore("k", "vp1", SEGMENT_INTERVAL + 1);
         putStore("k", "vp10", SEGMENT_INTERVAL + 10);
 
-        final ValueAndTimestamp<String> latest = getFromStore("k");
-        assertThat(latest.value(), equalTo("vp20"));
-        assertThat(latest.timestamp(), equalTo(SEGMENT_INTERVAL + 20));
-
-        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
-        assertThat(timeFilter.value(), equalTo("vp20"));
-        assertThat(timeFilter.timestamp(), equalTo(SEGMENT_INTERVAL + 20));
-
-        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
-        assertThat(timeFilter1.value(), equalTo("vp10"));
-        assertThat(timeFilter1.timestamp(), equalTo(SEGMENT_INTERVAL + 10));
-
-        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 5);
-        assertThat(timeFilter2.value(), equalTo("vp1"));
-        assertThat(timeFilter2.timestamp(), equalTo(SEGMENT_INTERVAL + 1));
-
-        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL);
-        assertThat(timeFilter3.value(), equalTo("vn1"));
-        assertThat(timeFilter3.timestamp(), equalTo(SEGMENT_INTERVAL - 1));
-
-        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL - 1);
-        assertThat(timeFilter4.value(), equalTo("vn1"));
-        assertThat(timeFilter4.timestamp(), equalTo(SEGMENT_INTERVAL - 1));
-
-        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 5);
-        assertThat(timeFilter5.value(), equalTo("vn10"));
-        assertThat(timeFilter5.timestamp(), equalTo(SEGMENT_INTERVAL - 10));
+        verifySet3();
     }
 
     @Test
@@ -338,38 +343,7 @@ public class RocksDBVersionedStoreTest {
         putStore("k", "vn5", SEGMENT_INTERVAL - 5);
         putStore("k", "vn6", SEGMENT_INTERVAL - 6);
 
-        final ValueAndTimestamp<String> latest = getFromStore("k");
-        assertThat(latest, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
-        assertThat(timeFilter, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
-        assertThat(timeFilter1, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 6);
-        assertThat(timeFilter2.value(), equalTo("vp5"));
-        assertThat(timeFilter2.timestamp(), equalTo(SEGMENT_INTERVAL + 5));
-
-        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL + 2);
-        assertThat(timeFilter3, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL);
-        assertThat(timeFilter4, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 1);
-        assertThat(timeFilter5, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter6 = getFromStore("k", SEGMENT_INTERVAL - 5);
-        assertThat(timeFilter6.value(), equalTo("vn5"));
-        assertThat(timeFilter6.timestamp(), equalTo(SEGMENT_INTERVAL - 5));
-
-        final ValueAndTimestamp<String> timeFilter7 = getFromStore("k", SEGMENT_INTERVAL - 6);
-        assertThat(timeFilter7.value(), equalTo("vn6"));
-        assertThat(timeFilter7.timestamp(), equalTo(SEGMENT_INTERVAL - 6));
-
-        final ValueAndTimestamp<String> timeFilter8 = getFromStore("k", SEGMENT_INTERVAL - 8);
-        assertThat(timeFilter8, nullValue());
+        verifySet4();
     }
 
     @Test
@@ -384,33 +358,7 @@ public class RocksDBVersionedStoreTest {
         store.restoreBatch(getChangelogRecords(records));
         store.finishRestore();
 
-        final ValueAndTimestamp<String> latest = getFromStore("k");
-        assertThat(latest.value(), equalTo("vp20"));
-        assertThat(latest.timestamp(), equalTo(SEGMENT_INTERVAL + 20));
-
-        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
-        assertThat(timeFilter.value(), equalTo("vp20"));
-        assertThat(timeFilter.timestamp(), equalTo(SEGMENT_INTERVAL + 20));
-
-        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
-        assertThat(timeFilter1.value(), equalTo("vp10"));
-        assertThat(timeFilter1.timestamp(), equalTo(SEGMENT_INTERVAL + 10));
-
-        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 5);
-        assertThat(timeFilter2.value(), equalTo("vp1"));
-        assertThat(timeFilter2.timestamp(), equalTo(SEGMENT_INTERVAL + 1));
-
-        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL);
-        assertThat(timeFilter3.value(), equalTo("vn1"));
-        assertThat(timeFilter3.timestamp(), equalTo(SEGMENT_INTERVAL - 1));
-
-        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL - 1);
-        assertThat(timeFilter4.value(), equalTo("vn1"));
-        assertThat(timeFilter4.timestamp(), equalTo(SEGMENT_INTERVAL - 1));
-
-        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 5);
-        assertThat(timeFilter5.value(), equalTo("vn10"));
-        assertThat(timeFilter5.timestamp(), equalTo(SEGMENT_INTERVAL - 10));
+        verifySet3();
     }
 
     @Test
@@ -428,38 +376,32 @@ public class RocksDBVersionedStoreTest {
         store.restoreBatch(getChangelogRecords(records));
         store.finishRestore();
 
-        final ValueAndTimestamp<String> latest = getFromStore("k");
-        assertThat(latest, nullValue());
+        verifySet4();
+    }
 
-        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
-        assertThat(timeFilter, nullValue());
+    @Test
+    public void shouldRestoreWithNullsAndRepeatTimestamps() {
+        final List<DataRecord> records = new ArrayList<>();
+        records.add(new DataRecord("k", "to_be_replaced", SEGMENT_INTERVAL + 20));
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 10));
+        records.add(new DataRecord("k", "to_be_replaced", SEGMENT_INTERVAL - 10));
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 10));
+        records.add(new DataRecord("k", "to_be_replaced", SEGMENT_INTERVAL - 1));
+        records.add(new DataRecord("k", "to_be_replaced", SEGMENT_INTERVAL + 1));
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 1));
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 1));
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 10));
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 5));
+        records.add(new DataRecord("k", "vp5", SEGMENT_INTERVAL + 5));
+        records.add(new DataRecord("k", "to_be_replaced", SEGMENT_INTERVAL - 5));
+        records.add(new DataRecord("k", "vn5", SEGMENT_INTERVAL - 5));
+        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 20));
+        records.add(new DataRecord("k", "vn6", SEGMENT_INTERVAL - 6));
 
-        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
-        assertThat(timeFilter1, nullValue());
+        store.restoreBatch(getChangelogRecords(records));
+        store.finishRestore();
 
-        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 6);
-        assertThat(timeFilter2.value(), equalTo("vp5"));
-        assertThat(timeFilter2.timestamp(), equalTo(SEGMENT_INTERVAL + 5));
-
-        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL + 2);
-        assertThat(timeFilter3, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL);
-        assertThat(timeFilter4, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 1);
-        assertThat(timeFilter5, nullValue());
-
-        final ValueAndTimestamp<String> timeFilter6 = getFromStore("k", SEGMENT_INTERVAL - 5);
-        assertThat(timeFilter6.value(), equalTo("vn5"));
-        assertThat(timeFilter6.timestamp(), equalTo(SEGMENT_INTERVAL - 5));
-
-        final ValueAndTimestamp<String> timeFilter7 = getFromStore("k", SEGMENT_INTERVAL - 6);
-        assertThat(timeFilter7.value(), equalTo("vn6"));
-        assertThat(timeFilter7.timestamp(), equalTo(SEGMENT_INTERVAL - 6));
-
-        final ValueAndTimestamp<String> timeFilter8 = getFromStore("k", SEGMENT_INTERVAL - 8);
-        assertThat(timeFilter8, nullValue());
+        verifySet4();
     }
 
     @Test
@@ -478,6 +420,17 @@ public class RocksDBVersionedStoreTest {
         store.restoreBatch(getChangelogRecords(moreRecords));
         store.finishRestore();
 
+        verifySet2();
+    }
+
+    // TODO: prefix scan tests
+
+    // TODO: cleanup tests? (ensure old records deleted)
+
+    // TODO: tests for byte[0], empty string, and other non-null types
+
+    // TODO: extract inputs for these shared sets into shared code as well? (slightly annoying for the repeat tests)
+    private void verifySet2() {
         final ValueAndTimestamp<String> latest = getFromStore("k");
         assertThat(latest, nullValue());
 
@@ -508,13 +461,70 @@ public class RocksDBVersionedStoreTest {
         assertThat(timeFilter7, nullValue());
     }
 
-    // TODO: prefix scan tests
+    private void verifySet3() {
+        final ValueAndTimestamp<String> latest = getFromStore("k");
+        assertThat(latest.value(), equalTo("vp20"));
+        assertThat(latest.timestamp(), equalTo(SEGMENT_INTERVAL + 20));
 
-    // TODO: cleanup tests? (ensure old records deleted)
+        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
+        assertThat(timeFilter.value(), equalTo("vp20"));
+        assertThat(timeFilter.timestamp(), equalTo(SEGMENT_INTERVAL + 20));
 
-    // TODO: tests for byte[0], empty string, and other non-null types
+        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
+        assertThat(timeFilter1.value(), equalTo("vp10"));
+        assertThat(timeFilter1.timestamp(), equalTo(SEGMENT_INTERVAL + 10));
 
-    // TODO: tests that repeat timestamps
+        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 5);
+        assertThat(timeFilter2.value(), equalTo("vp1"));
+        assertThat(timeFilter2.timestamp(), equalTo(SEGMENT_INTERVAL + 1));
+
+        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL);
+        assertThat(timeFilter3.value(), equalTo("vn1"));
+        assertThat(timeFilter3.timestamp(), equalTo(SEGMENT_INTERVAL - 1));
+
+        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL - 1);
+        assertThat(timeFilter4.value(), equalTo("vn1"));
+        assertThat(timeFilter4.timestamp(), equalTo(SEGMENT_INTERVAL - 1));
+
+        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 5);
+        assertThat(timeFilter5.value(), equalTo("vn10"));
+        assertThat(timeFilter5.timestamp(), equalTo(SEGMENT_INTERVAL - 10));
+    }
+
+    private void verifySet4() {
+        final ValueAndTimestamp<String> latest = getFromStore("k");
+        assertThat(latest, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
+        assertThat(timeFilter, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
+        assertThat(timeFilter1, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 6);
+        assertThat(timeFilter2.value(), equalTo("vp5"));
+        assertThat(timeFilter2.timestamp(), equalTo(SEGMENT_INTERVAL + 5));
+
+        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL + 2);
+        assertThat(timeFilter3, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL);
+        assertThat(timeFilter4, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 1);
+        assertThat(timeFilter5, nullValue());
+
+        final ValueAndTimestamp<String> timeFilter6 = getFromStore("k", SEGMENT_INTERVAL - 5);
+        assertThat(timeFilter6.value(), equalTo("vn5"));
+        assertThat(timeFilter6.timestamp(), equalTo(SEGMENT_INTERVAL - 5));
+
+        final ValueAndTimestamp<String> timeFilter7 = getFromStore("k", SEGMENT_INTERVAL - 6);
+        assertThat(timeFilter7.value(), equalTo("vn6"));
+        assertThat(timeFilter7.timestamp(), equalTo(SEGMENT_INTERVAL - 6));
+
+        final ValueAndTimestamp<String> timeFilter8 = getFromStore("k", SEGMENT_INTERVAL - 8);
+        assertThat(timeFilter8, nullValue());
+    }
 
     private static byte[] getSerializedKey(final String key) {
         return key.getBytes(UTF_8);
