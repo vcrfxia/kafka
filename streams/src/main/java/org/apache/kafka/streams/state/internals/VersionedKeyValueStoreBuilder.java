@@ -27,7 +27,7 @@ import org.apache.kafka.streams.state.VersionedKeyValueStore;
 import org.apache.kafka.streams.state.internals.CachingTimeAwareKeyValueStore.CacheableVersionedStoreCallbacks;
 
 public class VersionedKeyValueStoreBuilder<K, V>
-    extends AbstractStoreBuilder<K, ValueAndTimestamp<V>, TimestampedKeyValueStore<K, V>> {
+    extends AbstractStoreBuilder<K, ValueAndTimestamp<V>, VersionedKeyValueStore<K, V>> {
 
     private final VersionedKeyValueBytesStoreSupplier storeSupplier;
     private final Serde<V> innerValueSerde;

@@ -36,10 +36,11 @@ public class TimestampedKeyValueStoreMaterializer<K, V> {
     /**
      * @return  StoreBuilder
      */
-    public StoreBuilder<TimestampedKeyValueStore<K, V>> materialize() {
+    // TODO: create separate materializer for versioned stores, instead of using wildcard in generic here?
+    public StoreBuilder<? extends TimestampedKeyValueStore<K, V>> materialize() {
         KeyValueBytesStoreSupplier supplier = (KeyValueBytesStoreSupplier) materialized.storeSupplier();
 
-        final StoreBuilder<TimestampedKeyValueStore<K, V>> builder;
+        final StoreBuilder<? extends TimestampedKeyValueStore<K, V>> builder;
         if (supplier == null && materialized.storeType() == StoreType.ROCKS_DB) {
             // TODO(note): hack to materialize all stores as versioned stores for now
             builder = new VersionedKeyValueStoreBuilder<>(materialized.storeName(),
