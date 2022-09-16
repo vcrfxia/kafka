@@ -859,9 +859,8 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                 }
             }
         } else {
-            // insert into segment corresponding to foundTs. the new record is the earliest in this
-            // segment, or the segment is empty (in which case the new record could be either before
-            // or after the existing tombstone)
+            // insert into segment corresponding to foundTs. the new record is either the earliest
+            // or the latest in this segment, depending on the circumstances of the fall-through
             final T segment = versionedStoreClient.getOrCreateSegmentIfLive(
                 segmentIdGetter.apply(foundTs), context, observedStreamTime);
             if (segment == null) {
@@ -879,13 +878,12 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                     versionedStoreClient.putToSegment(
                         segment,
                         key,
-                        segmentValueSchema.newSegmentValueWithTombstone(timestamp).serialize()
+                        segmentValueSchema.newSegmentValueWithRecord(null, timestamp, foundTs).serialize() // TODO: add dedicated test case for the fact that this cannot be newSegmentValueWithTombstone (fails if tombstone inserted into empty older segment, also if cache replaces a tombstone as latest value)
                     );
                 }
-            } else {
+            } else { // TODO: add dedicated test cases for different combinations of fall-through as earliest vs latest, empty vs non-empty
                 final long foundNextTs = segmentValueSchema.getNextTimestamp(segmentValue);
-                if (segmentValueSchema.isEmpty(segmentValue)
-                    && foundNextTs < timestamp) {
+                if (foundNextTs <= timestamp) {
                     // insert as latest into empty segment
                     final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
                     sv.insertAsLatest(
@@ -894,18 +892,19 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                         valueAndTimestamp.value()
                     );
                     versionedStoreClient.putToSegment(segment, key, sv.serialize());
-                } else if (segmentValueSchema.isEmpty(segmentValue) && foundNextTs == timestamp) {
-                    if (valueAndTimestamp.value() != null) {
-                        // replace tombstone with non-empty record
-                        versionedStoreClient.putToSegment(segment, key, segmentValueSchema.newSegmentValueWithRecord(
-                            valueAndTimestamp.value(), timestamp, foundTs
-                        ).serialize());
-                    }
                 } else {
-                    if (!segmentValueSchema.isEmpty(segmentValue)
-                        && segmentValueSchema.getMinTimestamp(segmentValue) <= timestamp) {
-                        throw new IllegalStateException( // TODO: is this assumption actually correct?
-                            "Incorrect assumption about fall-through insertion always being earliest");
+                    // TODO: remove
+                    final long foundMinTs = segmentValueSchema.isEmpty(segmentValue)
+                        ? segmentValueSchema.getNextTimestamp(segmentValue)
+                        : segmentValueSchema.getMinTimestamp(segmentValue);
+                    if (foundMinTs <= timestamp) {
+                        throw new IllegalStateException(
+                            "Incorrect assumption about fall-through insertion always being earliest or latest");
+                    }
+                    if (foundMinTs != foundTs) {
+                        throw new IllegalStateException(
+                            "Incorrect assumption about fall-through insertion always being earliest or latest. "
+                                + "FoundTs does not match earliest timestamp.");
                     }
 
                     // insert as earliest (into possibly empty segment)
