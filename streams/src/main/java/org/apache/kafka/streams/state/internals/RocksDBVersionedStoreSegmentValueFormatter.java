@@ -156,8 +156,8 @@ final class RocksDBVersionedStoreSegmentValueFormatter {
             }
 
             long currNextTimestamp = nextTimestamp;
-            long currTimestamp = 0L;
-            int currValueSize = 0;
+            long currTimestamp = -1L; // choose an invalid timestamp. if this is valid, this needs to be re-worked
+            int currValueSize;
             int currIndex = 0;
             int cumValueSize = 0;
             while (currTimestamp != minTimestamp) {

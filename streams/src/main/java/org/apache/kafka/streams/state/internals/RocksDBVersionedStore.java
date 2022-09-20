@@ -78,11 +78,11 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
     // valueAndTimestamp should never come in as null, should always be a null wrapped with a timestamp
     @Override
     public void put(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp) {
-        LOG.info(String.format("vxia debug: put: key (%s), value (%s), ts (%d)",
-            key.toString(),
-            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
-            valueAndTimestamp.timestamp()
-        ));
+//        LOG.info(String.format("vxia debug: put: key (%s), value (%s), ts (%d)",
+//            key.toString(),
+//            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
+//            valueAndTimestamp.timestamp()
+//        ));
 
         observedStreamTime = putInternal(
             latestValueSchema,
@@ -155,10 +155,10 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
 
     @Override
     public ValueAndTimestamp<byte[]> get(final Bytes key, final long timestampTo) {
-        LOG.info(String.format("vxia debug: get: key (%s), tsTo (%d)",
-            key.toString(),
-            timestampTo
-        ));
+//        LOG.info(String.format("vxia debug: get: key (%s), tsTo (%d)",
+//            key.toString(),
+//            timestampTo
+//        ));
 
         // TODO: see AbstractDualSchemaRocksDBSegmentedBytesStore for inspiration
         // first check the latest value store
@@ -743,12 +743,11 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                 }
 
                 if (segmentValueSchema.isEmpty(segmentValue)) {
-                    // the record being inserted belongs in this segment.
-                    // insert and conclude the procedure.
-                    final SegmentValue sv = segmentValueSchema.deserialize(segmentValue);
-                    sv.insertAsEarliest(timestamp, valueAndTimestamp.value());
-                    versionedStoreClient.putToSegment(segment, key, sv.serialize());
-                    return new PutStatus(true, foundTs);
+                    // it's possible the record belongs in this segment, but also possible it belongs
+                    // in an earlier segment. mark as tentative and continue.
+                    // TODO(note): had to make this update because previously it was broken when inserting row 6 of test_records_2 with 3 segments
+                    foundTs = foundNextTs;
+                    continue;
                 }
 
                 final long minFoundTs = segmentValueSchema.getMinTimestamp(segmentValue);
