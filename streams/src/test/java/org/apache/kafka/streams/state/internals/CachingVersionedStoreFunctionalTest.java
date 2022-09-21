@@ -1,12 +1,18 @@
 package org.apache.kafka.streams.state.internals;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.computeTestCases;
+import static org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.generateTestRecords;
+import static org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.getGeneratedTestCaseFailureMessage;
+import static org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.getRecordsFromFile;
+import static org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.getSavedDataFilenames;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.internals.RecordHeaders;
@@ -19,6 +25,7 @@ import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.state.KeyValueStoreTestDriver;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
+import org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.DataRecord;
 import org.apache.kafka.test.InternalMockProcessorContext;
 import org.junit.After;
 import org.junit.Before;
@@ -56,6 +63,78 @@ public class CachingVersionedStoreFunctionalTest {
     @After
     public void after() {
         store.close();
+    }
+
+    @Test
+    public void shouldPutSavedData() {
+        for (String file : getSavedDataFilenames()) {
+            shouldPutSavedData(file);
+            after();
+            before();
+        }
+    }
+
+    private void shouldPutSavedData(final String filename) {
+        final String key = "k";
+        final List<VersionedStoreTestDataGeneratorUtil.DataRecord> records = getRecordsFromFile(getClass(), filename);
+        final Map<Long, VersionedStoreTestDataGeneratorUtil.DataRecord> testCases = computeTestCases(records);
+
+        for (VersionedStoreTestDataGeneratorUtil.DataRecord record : records) {
+            putStore(record.key, record.value, record.timestamp);
+        }
+
+        for (Map.Entry<Long, VersionedStoreTestDataGeneratorUtil.DataRecord> testCase : testCases.entrySet()) {
+            final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
+            if (testCase.getValue().value != null) {
+                assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
+                    observed.value(), equalTo(testCase.getValue().value));
+                assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Timestamp"),
+                    observed.timestamp(), equalTo(testCase.getValue().timestamp));
+            } else {
+                assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
+                    observed, nullValue());
+            }
+        }
+    }
+
+    @Test
+    public void shouldPutGeneratedData() {
+        for (int r = 0; r < 1; r++) {
+            System.out.println("r: " + r);
+
+            final String key = "k";
+            final List<VersionedStoreTestDataGeneratorUtil.DataRecord> records = generateTestRecords(HISTORY_RETENTION, 1000, key);
+//            final List<DataRecord> records = getRecordsFromFile(getClass(), "versioned_store_test/test_records_3.txt");
+            final Map<Long, VersionedStoreTestDataGeneratorUtil.DataRecord> testCases = computeTestCases(records);
+
+            try {
+                for (VersionedStoreTestDataGeneratorUtil.DataRecord record : records) {
+                    putStore(record.key, record.value, record.timestamp);
+                }
+            } catch (Exception e) {
+                System.out.println("Failed to put data records:");
+                for (VersionedStoreTestDataGeneratorUtil.DataRecord record : records) {
+                    System.out.printf("\tts = %d, key = %s, value = %s%n", record.timestamp, record.key, record.value);
+                }
+                throw e;
+            }
+
+            for (Map.Entry<Long, VersionedStoreTestDataGeneratorUtil.DataRecord> testCase : testCases.entrySet()) {
+                final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
+                if (testCase.getValue().value != null) {
+                    assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
+                        observed.value(), equalTo(testCase.getValue().value));
+                    assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Timestamp"),
+                        observed.timestamp(), equalTo(testCase.getValue().timestamp));
+                } else {
+                    assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
+                        observed, nullValue());
+                }
+            }
+
+            // TODO(note): hack to run the test multiple times
+            after(); before();
+        }
     }
 
     @Test
@@ -328,86 +407,6 @@ public class CachingVersionedStoreFunctionalTest {
 
         verifySet4();
     }
-
-    // TODO: enable logging and test restore
-    /*
-    @Test
-    public void shouldRestore() {
-        final List<DataRecord> records = new ArrayList<>();
-        records.add(new DataRecord("k", "vp20", SEGMENT_INTERVAL + 20));
-        records.add(new DataRecord("k", "vn10", SEGMENT_INTERVAL - 10));
-        records.add(new DataRecord("k", "vn1", SEGMENT_INTERVAL - 1));
-        records.add(new DataRecord("k", "vp1", SEGMENT_INTERVAL + 1));
-        records.add(new DataRecord("k", "vp10", SEGMENT_INTERVAL + 10));
-
-        store.restoreBatch(getChangelogRecords(records));
-        store.finishRestore();
-
-        verifySet3();
-    }
-
-    @Test
-    public void shouldRestoreWithNulls() {
-        final List<DataRecord> records = new ArrayList<>();
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 20));
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 10));
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 1));
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 1));
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 10));
-        records.add(new DataRecord("k", "vp5", SEGMENT_INTERVAL + 5));
-        records.add(new DataRecord("k", "vn5", SEGMENT_INTERVAL - 5));
-        records.add(new DataRecord("k", "vn6", SEGMENT_INTERVAL - 6));
-
-        store.restoreBatch(getChangelogRecords(records));
-        store.finishRestore();
-
-        verifySet4();
-    }
-
-    @Test
-    public void shouldRestoreWithNullsAndRepeatTimestamps() {
-        final List<DataRecord> records = new ArrayList<>();
-        records.add(new DataRecord("k", "to_be_replaced", SEGMENT_INTERVAL + 20));
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 10));
-        records.add(new DataRecord("k", "to_be_replaced", SEGMENT_INTERVAL - 10));
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 10));
-        records.add(new DataRecord("k", "to_be_replaced", SEGMENT_INTERVAL - 1));
-        records.add(new DataRecord("k", "to_be_replaced", SEGMENT_INTERVAL + 1));
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 1));
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 1));
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 10));
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 5));
-        records.add(new DataRecord("k", "vp5", SEGMENT_INTERVAL + 5));
-        records.add(new DataRecord("k", "to_be_replaced", SEGMENT_INTERVAL - 5));
-        records.add(new DataRecord("k", "vn5", SEGMENT_INTERVAL - 5));
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL + 20));
-        records.add(new DataRecord("k", "vn6", SEGMENT_INTERVAL - 6));
-
-        store.restoreBatch(getChangelogRecords(records));
-        store.finishRestore();
-
-        verifySet4();
-    }
-
-    @Test
-    public void shouldRestoreMultipleBatches() {
-        final List<DataRecord> records = new ArrayList<>();
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 20));
-        records.add(new DataRecord("k", "vn10", SEGMENT_INTERVAL - 10));
-        records.add(new DataRecord("k", null, SEGMENT_INTERVAL - 1));
-
-        final List<DataRecord> moreRecords = new ArrayList<>();
-        moreRecords.add(new DataRecord("k", null, SEGMENT_INTERVAL + 1));
-        moreRecords.add(new DataRecord("k", "vp10", SEGMENT_INTERVAL + 10));
-        moreRecords.add(new DataRecord("k", null, SEGMENT_INTERVAL + 20));
-
-        store.restoreBatch(getChangelogRecords(records));
-        store.restoreBatch(getChangelogRecords(moreRecords));
-        store.finishRestore();
-
-        verifySet2();
-    }
-    */
 
     // TODO: prefix scan tests
 

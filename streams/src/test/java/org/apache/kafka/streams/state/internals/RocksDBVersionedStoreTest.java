@@ -1,22 +1,21 @@
 package org.apache.kafka.streams.state.internals;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.computeTestCases;
+import static org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.generateTestRecords;
+import static org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.getGeneratedTestCaseFailureMessage;
+import static org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.getRecordsFromFile;
+import static org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.getSavedDataFilenames;
 import static org.easymock.EasyMock.mock;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.IOException;
-import java.io.InputStreamReader;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.record.TimestampType;
@@ -31,6 +30,7 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.DataRecord;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
 import org.apache.kafka.test.InternalMockProcessorContext;
 import org.apache.kafka.test.StreamsTestUtils;
@@ -81,91 +81,6 @@ public class RocksDBVersionedStoreTest {
         store.close();
     }
 
-    // random with uniform distribution from 0 to ~history retention, for a single key
-    private static List<DataRecord> generateTestRecords(
-        final long historyRetention, final int numRecords, final String key) {
-        final List<DataRecord> records = new ArrayList<>();
-
-        final long tsScalar = Math.max(historyRetention / numRecords, 1);
-        for (int i = 0; i < numRecords; i++) {
-            // random timestamp, with scalar to help increase chance of collisions
-            final long timestamp = (int)(Math.random() * Math.min(numRecords, historyRetention)) * tsScalar;
-
-            // random value, with some probability of null
-            final String value = Math.random() < 0.2 ? null : "v" + i;
-
-            records.add(new DataRecord(key, value, timestamp));
-        }
-        return records;
-    }
-
-    // assumes all records are for the same key. empty optional says to check for null.
-    private static Map<Long, DataRecord> computeTestCases(final List<DataRecord> records) {
-        final Map<Long, DataRecord> testCases = new HashMap<>();
-
-        // add timestamps corresponding to the data points themselves
-        for (DataRecord record : records) {
-            testCases.put(record.timestamp, record);
-        }
-
-        // collect and sort (unique) timestamps
-        final List<Long> timestamps = new ArrayList<>(testCases.keySet());
-        Collections.sort(timestamps);
-
-        // add timestamps for one greater than data points
-        for (Long timestamp : timestamps) {
-            testCases.putIfAbsent(timestamp + 1, testCases.get(timestamp));
-        }
-
-        // add timestamps for one less than data points
-        if (timestamps.get(0) > 0) {
-            testCases.put(timestamps.get(0) - 1, new DataRecord(testCases.get(timestamps.get(0)).key, null));
-        }
-        for (int i = 1; i < timestamps.size(); i++) {
-            testCases.putIfAbsent(timestamps.get(i) - 1, testCases.get(timestamps.get(i-1)));
-        }
-
-        // TODO: also return expected value for query without time filter
-        return testCases;
-    }
-
-    private List<DataRecord> getRecordsFromFile(final String filename) {
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(
-            getClass().getClassLoader().getResourceAsStream(filename)
-        ))) {
-            return br.lines().map(l -> {
-                String[] parts = l.split(",");
-                String valueStr = parts[2].substring(parts[2].indexOf("value = ") + "value = ".length());
-                return new DataRecord(
-                    parts[1].substring(parts[1].indexOf("key = ") + "key = ".length()),
-                    valueStr.equals("null") ? null : valueStr,
-                    Long.parseLong(parts[0].substring(parts[0].indexOf("ts = ") + "ts = ".length()))
-                );
-            }).collect(Collectors.toList());
-        } catch (IOException e) {
-            throw new RuntimeException("failed to load test records");
-        }
-    }
-
-    private static String getGeneratedTestCaseFailureMessage(
-        final List<DataRecord> records, final Map.Entry<Long, DataRecord> testCase, final String failedProperty) {
-        final StringBuilder sb = new StringBuilder();
-        sb.append("Failed assertion for generated records:\n");
-        for (DataRecord record : records) {
-            sb.append(String.format("\tts = %d, key = %s, value = %s\n", record.timestamp, record.key, record.value));
-        }
-        sb.append(String.format("Checking for ts = %d, value = %s\n", testCase.getKey(), testCase.getValue() != null ? testCase.getValue() : "null"));
-        sb.append(String.format("%s is incorrect.", failedProperty));
-        return sb.toString();
-    }
-
-    private static List<String> getSavedDataFilenames() {
-        final List<String> files = new ArrayList<>();
-        files.add("versioned_store_test/test_records.txt");
-        files.add("versioned_store_test/test_records_2.txt");
-        return files;
-    }
-
     @Test
     public void shouldPutSavedData() {
         for (String file : getSavedDataFilenames()) {
@@ -177,7 +92,7 @@ public class RocksDBVersionedStoreTest {
 
     private void shouldPutSavedData(final String filename) {
         final String key = "k";
-        final List<DataRecord> records = getRecordsFromFile(filename);
+        final List<DataRecord> records = getRecordsFromFile(getClass(), filename);
         final Map<Long, DataRecord> testCases = computeTestCases(records);
 
         for (DataRecord record : records) {
@@ -205,7 +120,7 @@ public class RocksDBVersionedStoreTest {
 
             final String key = "k";
             final List<DataRecord> records = generateTestRecords(HISTORY_RETENTION, 1000, key);
-//            final List<DataRecord> records = getRecordsFromFile("versioned_store_test/test_records_3.txt");
+//            final List<DataRecord> records = getRecordsFromFile(getClass(), "versioned_store_test/test_records_3.txt");
             final Map<Long, DataRecord> testCases = computeTestCases(records);
 
             try {
@@ -249,7 +164,7 @@ public class RocksDBVersionedStoreTest {
 
     private void shouldRestoreSavedData(final String filename) {
         final String key = "k";
-        final List<DataRecord> records = getRecordsFromFile(filename);
+        final List<DataRecord> records = getRecordsFromFile(getClass(), filename);
         final Map<Long, DataRecord> testCases = computeTestCases(records);
 
         store.restoreBatch(getChangelogRecords(records));
@@ -803,22 +718,6 @@ public class RocksDBVersionedStoreTest {
             : ValueAndTimestamp.make(
             stringDeserializer.deserialize(null, valueAndTimestamp.value()),
             valueAndTimestamp.timestamp());
-    }
-
-    private static class DataRecord {
-        final String key;
-        final String value;
-        final long timestamp;
-
-        DataRecord(String key, String value) {
-            this(key, value, -1L);
-        }
-
-        DataRecord(String key, String value, long timestamp) {
-            this.key = key;
-            this.value = value;
-            this.timestamp = timestamp;
-        }
     }
 
     private static List<ConsumerRecord<byte[], byte[]>> getChangelogRecords(List<DataRecord> data) {

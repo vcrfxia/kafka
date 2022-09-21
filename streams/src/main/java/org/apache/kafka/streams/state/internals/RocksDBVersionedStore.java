@@ -137,9 +137,9 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
 
     @Override
     public ValueAndTimestamp<byte[]> get(final Bytes key) {
-        LOG.info(String.format("vxia debug: get: key (%s)",
-            key.toString()
-        ));
+//        LOG.info(String.format("vxia debug: get: key (%s)",
+//            key.toString()
+//        ));
 
         // latest value is guaranteed to be present in the latest value store
         final byte[] latestValue = latestValueStore.get(key);
@@ -433,12 +433,12 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
     @Override
     public void replaceFromCache(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp, long nextTimestamp) {
         // put bypassing latest value, update next timestamp
-        LOG.info(String.format("vxia debug: replaceFromCache: key (%s), value (%s), ts (%d), nextTs (%d)",
-            key.toString(),
-            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
-            valueAndTimestamp.timestamp(),
-            nextTimestamp
-        ));
+//        LOG.info(String.format("vxia debug: replaceFromCache: key (%s), value (%s), ts (%d), nextTs (%d)",
+//            key.toString(),
+//            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
+//            valueAndTimestamp.timestamp(),
+//            nextTimestamp
+//        ));
 
         bypassCacheInternal(key, valueAndTimestamp, nextTimestamp);
     }
@@ -446,12 +446,12 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
     @Override
     public void bypassCache(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp, final long nextTimestamp) {
         // put bypassing latest value, next timestamp should not need an update
-        LOG.info(String.format("vxia debug: bypassCache: key (%s), value (%s), ts (%d), nextTs (%d)",
-            key.toString(),
-            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
-            valueAndTimestamp.timestamp(),
-            nextTimestamp
-        ));
+//        LOG.info(String.format("vxia debug: bypassCache: key (%s), value (%s), ts (%d), nextTs (%d)",
+//            key.toString(),
+//            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
+//            valueAndTimestamp.timestamp(),
+//            nextTimestamp
+//        ));
 
         bypassCacheInternal(key, valueAndTimestamp, nextTimestamp);
     }
