@@ -89,7 +89,7 @@ public class CachingVersionedStoreFunctionalTest {
 
         for (Map.Entry<Long, VersionedStoreTestDataGeneratorUtil.DataRecord> testCase : testCases.entrySet()) {
             final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
-            if (testCase.getValue().timestamp > MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) { // TODO: should this have equality?
+            if (testCase.getValue().timestamp >= MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) {
                 // within history retention. validate results
                 if (testCase.getValue().value != null) {
                     assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
@@ -128,7 +128,7 @@ public class CachingVersionedStoreFunctionalTest {
 
             for (Map.Entry<Long, VersionedStoreTestDataGeneratorUtil.DataRecord> testCase : testCases.entrySet()) {
                 final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
-                if (testCase.getValue().timestamp > MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) { // TODO: should this have equality?
+                if (testCase.getValue().timestamp >= MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) {
                     // within history retention. validate results
                     if (testCase.getValue().value != null) {
                         assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),

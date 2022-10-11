@@ -46,9 +46,9 @@ public class RocksDBVersionedStoreTest {
     private static final long HISTORY_RETENTION = 300_000L;
     private static final long SEGMENT_INTERVAL = HISTORY_RETENTION / 3;
     private static final long MAX_GENERATED_TIMESTAMP = HISTORY_RETENTION;
-//    private static final long HISTORY_RETENTION = 250L;
-//    private static final long SEGMENT_INTERVAL = 100L;
-//    private static final long MAX_GENERATED_TIMESTAMP = 300L;
+//    private static final long HISTORY_RETENTION = 1L;
+//    private static final long SEGMENT_INTERVAL = 5L;
+//    private static final long MAX_GENERATED_TIMESTAMP = 20L;
 
     private static final long BASE_TIMESTAMP = 10L;
 
@@ -105,7 +105,7 @@ public class RocksDBVersionedStoreTest {
 
         for (Map.Entry<Long, DataRecord> testCase : testCases.entrySet()) {
             final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
-            if (testCase.getValue().timestamp > MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) { // TODO: should this have equality?
+            if (testCase.getValue().timestamp >= MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) {
                 // within history retention. validate results
                 if (testCase.getValue().value != null) {
                     assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
@@ -144,7 +144,7 @@ public class RocksDBVersionedStoreTest {
 
             for (Map.Entry<Long, DataRecord> testCase : testCases.entrySet()) {
                 final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
-                if (testCase.getValue().timestamp > MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) { // TODO: should this have equality?
+                if (testCase.getValue().timestamp >= MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) {
                     // within history retention. validate results
                     if (testCase.getValue().value != null) {
                         assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
@@ -182,7 +182,7 @@ public class RocksDBVersionedStoreTest {
 
         for (Map.Entry<Long, DataRecord> testCase : testCases.entrySet()) {
             final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
-            if (testCase.getValue().timestamp > MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) { // TODO: should this have equality?
+            if (testCase.getValue().timestamp >= MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) {
                 // within history retention. validate results
                 if (testCase.getValue().value != null) {
                     assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
@@ -219,7 +219,7 @@ public class RocksDBVersionedStoreTest {
 
             for (Map.Entry<Long, DataRecord> testCase : testCases.entrySet()) {
                 final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
-                if (testCase.getValue().timestamp > MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) { // TODO: should this have equality?
+                if (testCase.getValue().timestamp >= MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) {
                     // within history retention. validate results
                     if (testCase.getValue().value != null) {
                         assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),

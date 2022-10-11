@@ -570,7 +570,12 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
 
         @Override
         public void putToSegment(KeyValueSegment segment, Bytes key, byte[] value) {
-            segment.put(key, value);
+            // TODO(note): hacky bug fix to avoid writing to a closed segment, will be better to rethink
+            // when segments are cleaned in general instead (today happens in getOrCreateSegmentIfLive() which
+            // isn't called as methodically with versioned tables as it is with windowed tables)
+            if (segment.isOpen()) {
+                segment.put(key, value);
+            }
         }
 
         @Override
