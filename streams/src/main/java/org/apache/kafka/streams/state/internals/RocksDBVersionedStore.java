@@ -99,11 +99,11 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
 
     @Override
     public ValueAndTimestamp<byte[]> putIfAbsent(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp) { // TODO: where is this called from? do we actually need this?
-        LOG.info(String.format("vxia debug: putIfAbsent: key (%s), value (%s), ts (%d)",
-            key.toString(),
-            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
-            valueAndTimestamp.timestamp()
-        ));
+//        LOG.info(String.format("vxia debug: putIfAbsent: key (%s), value (%s), ts (%d)",
+//            key.toString(),
+//            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
+//            valueAndTimestamp.timestamp()
+//        ));
 
         // TODO: segmented stores don't have this (comes from KeyValueStore)
         return null;
@@ -770,19 +770,21 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                             // existing record needs to be moved to an older segment. do this first.
                             final T olderSegment = versionedStoreClient
                                 .getOrCreateSegmentIfLive(segmentIdForTimestamp, context, observedStreamTime);
-                            final byte[] olderSegmentValue = versionedStoreClient.getFromSegment(olderSegment, key);
-                            if (olderSegmentValue == null) {
-                                versionedStoreClient.putToSegment(
-                                    olderSegment,
-                                    key,
-                                    segmentValueSchema.newSegmentValueWithRecord(
-                                        searchResult.value(), searchResult.validFrom(), timestamp
-                                    ).serialize()
-                                );
-                            } else {
-                                final SegmentValue olderSv = segmentValueSchema.deserialize(olderSegmentValue);
-                                olderSv.insertAsLatest(searchResult.validFrom(), timestamp, searchResult.value());
-                                versionedStoreClient.putToSegment(olderSegment, key, olderSv.serialize());
+                            if (olderSegment != null) {
+                                final byte[] olderSegmentValue = versionedStoreClient.getFromSegment(olderSegment, key);
+                                if (olderSegmentValue == null) {
+                                    versionedStoreClient.putToSegment(
+                                        olderSegment,
+                                        key,
+                                        segmentValueSchema.newSegmentValueWithRecord(
+                                            searchResult.value(), searchResult.validFrom(), timestamp
+                                        ).serialize()
+                                    );
+                                } else {
+                                    final SegmentValue olderSv = segmentValueSchema.deserialize(olderSegmentValue);
+                                    olderSv.insertAsLatest(searchResult.validFrom(), timestamp, searchResult.value());
+                                    versionedStoreClient.putToSegment(olderSegment, key, olderSv.serialize());
+                                }
                             }
 
                             // update in newer segment (replace the record that was just moved with the new one)
@@ -799,7 +801,7 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                 // TODO: we can technically remove this
                 if (minFoundTs < observedStreamTime - historyRetention) {
                     // the record being inserted does not affect version history. discard and return
-                    LOG.warn("Skipping record for expired put.");
+//                    LOG.warn("Skipping record for expired put."); // TODO: reenable
                     return new PutStatus(true, foundTs);
                 }
 

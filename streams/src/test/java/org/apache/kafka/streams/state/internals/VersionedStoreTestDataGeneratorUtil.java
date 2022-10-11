@@ -11,15 +11,15 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class VersionedStoreTestDataGeneratorUtil {
-    // random with uniform distribution from 0 to ~history retention, for a single key
+    // timestamps are random with uniform distribution from 0 to maxTimestamp, for a single key
     static List<DataRecord> generateTestRecords(
-        final long historyRetention, final int numRecords, final String key) {
+        final long maxTimestamp, final int numRecords, final String key) {
         final List<DataRecord> records = new ArrayList<>();
 
-        final long tsScalar = Math.max(historyRetention / numRecords, 1);
+        final long tsScalar = Math.max(maxTimestamp / numRecords, 1);
         for (int i = 0; i < numRecords; i++) {
             // random timestamp, with scalar to help increase chance of collisions
-            final long timestamp = (int)(Math.random() * Math.min(numRecords, historyRetention)) * tsScalar;
+            final long timestamp = (int)(Math.random() * Math.min(numRecords, maxTimestamp)) * tsScalar;
 
             // random value, with some probability of null
             final String value = Math.random() < 0.2 ? null : "v" + i;
@@ -29,8 +29,11 @@ public class VersionedStoreTestDataGeneratorUtil {
         return records;
     }
 
-    // assumes all records are for the same key. empty optional says to check for null.
-    static Map<Long, DataRecord> computeTestCases(final List<DataRecord> records) {
+    // assumes all records are for the same key.
+    // does not take history retention into account; caller should recognize that results which
+    // have fallen out of history retention are not guaranteed
+    static Map<Long, DataRecord> computeTestCases(
+        final List<DataRecord> records) {
         final Map<Long, DataRecord> testCases = new HashMap<>();
 
         // add timestamps corresponding to the data points themselves
@@ -93,6 +96,7 @@ public class VersionedStoreTestDataGeneratorUtil {
         final List<String> files = new ArrayList<>();
         files.add("versioned_store_test/test_records.txt");
         files.add("versioned_store_test/test_records_2.txt");
+        files.add("versioned_store_test/test_records_3.txt"); // hr, si, mgts: 250, 100, 300
         return files;
     }
 

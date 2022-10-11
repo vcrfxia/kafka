@@ -38,6 +38,10 @@ public class CachingVersionedStoreFunctionalTest {
     private static final String METRICS_SCOPE = "versionedrocksdb";
     private static final long HISTORY_RETENTION = 300_000L;
     private static final long SEGMENT_INTERVAL = HISTORY_RETENTION / 2;
+    private static final long MAX_GENERATED_TIMESTAMP = HISTORY_RETENTION;
+//    private static final long HISTORY_RETENTION = 250L; // TODO(note): these values are set from VersionedKeyValueStoreBuilder and don't actually get picked up here
+//    private static final long SEGMENT_INTERVAL = 100L;
+//    private static final long MAX_GENERATED_TIMESTAMP = 300L;
 
     private static final long BASE_TIMESTAMP = 10L;
 
@@ -85,14 +89,17 @@ public class CachingVersionedStoreFunctionalTest {
 
         for (Map.Entry<Long, VersionedStoreTestDataGeneratorUtil.DataRecord> testCase : testCases.entrySet()) {
             final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
-            if (testCase.getValue().value != null) {
-                assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
-                    observed.value(), equalTo(testCase.getValue().value));
-                assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Timestamp"),
-                    observed.timestamp(), equalTo(testCase.getValue().timestamp));
-            } else {
-                assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
-                    observed, nullValue());
+            if (testCase.getValue().timestamp > MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) { // TODO: should this have equality?
+                // within history retention. validate results
+                if (testCase.getValue().value != null) {
+                    assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
+                        observed == null ? null : observed.value(), equalTo(testCase.getValue().value));
+                    assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Timestamp"),
+                        observed.timestamp(), equalTo(testCase.getValue().timestamp));
+                } else {
+                    assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
+                        observed, nullValue());
+                }
             }
         }
     }
@@ -103,7 +110,7 @@ public class CachingVersionedStoreFunctionalTest {
             System.out.println("r: " + r);
 
             final String key = "k";
-            final List<VersionedStoreTestDataGeneratorUtil.DataRecord> records = generateTestRecords(HISTORY_RETENTION, 1000, key);
+            final List<VersionedStoreTestDataGeneratorUtil.DataRecord> records = generateTestRecords(MAX_GENERATED_TIMESTAMP, 1000, key);
 //            final List<DataRecord> records = getRecordsFromFile(getClass(), "versioned_store_test/test_records_3.txt");
             final Map<Long, VersionedStoreTestDataGeneratorUtil.DataRecord> testCases = computeTestCases(records);
 
@@ -121,14 +128,17 @@ public class CachingVersionedStoreFunctionalTest {
 
             for (Map.Entry<Long, VersionedStoreTestDataGeneratorUtil.DataRecord> testCase : testCases.entrySet()) {
                 final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
-                if (testCase.getValue().value != null) {
-                    assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
-                        observed.value(), equalTo(testCase.getValue().value));
-                    assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Timestamp"),
-                        observed.timestamp(), equalTo(testCase.getValue().timestamp));
-                } else {
-                    assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
-                        observed, nullValue());
+                if (testCase.getValue().timestamp > MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) { // TODO: should this have equality?
+                    // within history retention. validate results
+                    if (testCase.getValue().value != null) {
+                        assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
+                            observed == null ? null : observed.value(), equalTo(testCase.getValue().value));
+                        assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Timestamp"),
+                            observed.timestamp(), equalTo(testCase.getValue().timestamp));
+                    } else {
+                        assertThat(getGeneratedTestCaseFailureMessage(records, testCase, "Value"),
+                            observed, nullValue());
+                    }
                 }
             }
 
