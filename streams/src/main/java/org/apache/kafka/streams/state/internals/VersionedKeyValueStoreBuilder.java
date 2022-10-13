@@ -19,8 +19,6 @@ package org.apache.kafka.streams.state.internals;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.Time;
-import org.apache.kafka.streams.state.StoreSupplier;
-import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
 
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
@@ -29,25 +27,31 @@ import org.apache.kafka.streams.state.internals.CachingTimeAwareKeyValueStore.Ca
 public class VersionedKeyValueStoreBuilder<K, V>
     extends AbstractStoreBuilder<K, ValueAndTimestamp<V>, VersionedKeyValueStore<K, V>> {
 
-    private final VersionedKeyValueBytesStoreSupplier storeSupplier;
+    private final RocksDbVersionedKeyValueBytesStoreSupplier storeSupplier;
     private final Serde<V> innerValueSerde;
 
-    public VersionedKeyValueStoreBuilder(final String name,
+    public VersionedKeyValueStoreBuilder(final RocksDbVersionedKeyValueBytesStoreSupplier storeSupplier,
                                            final Serde<K> keySerde,
                                            final Serde<V> valueSerde,
                                            final Time time) {
         super(
-            name,
+            storeSupplier.name(),
             keySerde,
             null, // TODO(note): needs to be typed as if new ValueAndTimestampSerde<>(valueSerde) but we don't actually want this to be used, thus the null hack for now. consider updating the type required in AbstractStoreBuilder instead
             time);
         this.innerValueSerde = valueSerde;
-        this.storeSupplier = new RocksDBVersionedStoreSupplier(name);
+        this.storeSupplier = storeSupplier;
     }
 
     @Override
     public VersionedKeyValueStore<K, V> build() {
-        VersionedKeyValueStore<Bytes, byte[]> store = storeSupplier.get();
+        VersionedKeyValueStore<Bytes, byte[]> store = new RocksDBVersionedStore(
+            name,
+            storeSupplier.metricsScope(),
+            storeSupplier.historyRetentionMs(),
+            storeSupplier.segmentIntervalMs()
+        );
+
         return new MeteredTimeAwareKeyValueStore<>(
             maybeWrapCaching(maybeWrapLogging(store)),
             storeSupplier.metricsScope(),
@@ -92,65 +96,5 @@ public class VersionedKeyValueStoreBuilder<K, V>
         return inner instanceof CacheableVersionedKeyValueStore
             ? new CacheableChangeLoggingTimeAwareKeyValueBytesStore((CacheableVersionedKeyValueStore<Bytes, byte[]>) inner)
             : new ChangeLoggingTimeAwareKeyValueBytesStore<>(inner);
-    }
-
-    // TODO(note): same as KeyValueBytesStoreSupplier except with ValueAndTimestamp already present.
-    // also needs additional methods to expose retention period and segment interval (see WindowBytesStoreSupplier for inspiration)
-    // TODO: should this be moved to be a public interface, similar to WindowBytesStoreSupplier?
-    interface VersionedKeyValueBytesStoreSupplier
-        extends StoreSupplier<VersionedKeyValueStore<Bytes, byte[]>> {
-
-        /**
-         * The history retention (in milliseconds) for the {@link VersionedKeyValueStore}.
-         *
-         * @return history retention (in milliseconds)
-         */
-        long historyRetentionMs();
-
-        /**
-         * The size of the segments (in milliseconds) the store has.
-         *
-         * @return size of the segments (in milliseconds)
-         */
-        long segmentIntervalMs();
-    }
-
-    public static class RocksDBVersionedStoreSupplier implements VersionedKeyValueBytesStoreSupplier {
-
-        private final String name;
-        private final long historyRetentionMs;
-        private final long segmentIntervalMs;
-
-        public RocksDBVersionedStoreSupplier(final String name) {
-            this.name = name;
-            // TODO: do not hard code history retention
-            this.historyRetentionMs = 300_000L;
-            this.segmentIntervalMs = 150_000L;
-        }
-
-        @Override
-        public String name() {
-            return name;
-        }
-
-        @Override
-        public long historyRetentionMs() {
-            return historyRetentionMs;
-        }
-
-        @Override
-        public long segmentIntervalMs() {
-            return segmentIntervalMs;
-        }
-
-        @Override
-        public VersionedKeyValueStore<Bytes, byte[]> get() {
-            return new RocksDBVersionedStore(name, metricsScope(), historyRetentionMs, segmentIntervalMs);
-        }
-
-        @Override
-        public String metricsScope() {
-            return "rocksdb";
-        }
     }
 }

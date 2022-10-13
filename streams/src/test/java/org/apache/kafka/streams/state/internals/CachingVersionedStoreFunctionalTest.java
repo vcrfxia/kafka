@@ -10,6 +10,7 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,7 @@ import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.state.KeyValueStoreTestDriver;
+import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
 import org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.DataRecord;
@@ -39,7 +41,7 @@ public class CachingVersionedStoreFunctionalTest {
     private static final long HISTORY_RETENTION = 300_000L;
     private static final long SEGMENT_INTERVAL = HISTORY_RETENTION / 2;
     private static final long MAX_GENERATED_TIMESTAMP = HISTORY_RETENTION;
-//    private static final long HISTORY_RETENTION = 250L; // TODO(note): these values are set from VersionedKeyValueStoreBuilder and don't actually get picked up here
+//    private static final long HISTORY_RETENTION = 250L;
 //    private static final long SEGMENT_INTERVAL = 100L;
 //    private static final long MAX_GENERATED_TIMESTAMP = 300L;
 
@@ -60,7 +62,11 @@ public class CachingVersionedStoreFunctionalTest {
         context = (InternalMockProcessorContext) driver.context();
         context.setTime(BASE_TIMESTAMP); // TODO: ?
 
-        store = new VersionedKeyValueStoreBuilder<>(STORE_NAME, stringSerde, stringSerde, time).withCachingEnabled().build();
+        store = new VersionedKeyValueStoreBuilder<>(
+            (RocksDbVersionedKeyValueBytesStoreSupplier) Stores.persistentVersionedKeyValueStore(STORE_NAME, Duration.ofMillis(HISTORY_RETENTION), Duration.ofMillis(SEGMENT_INTERVAL)),
+            stringSerde, stringSerde, time)
+            .withCachingEnabled()
+            .build();
         store.init((StateStoreContext) context, store);
     }
 

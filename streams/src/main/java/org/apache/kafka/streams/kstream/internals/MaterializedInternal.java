@@ -24,6 +24,7 @@ import org.apache.kafka.streams.state.StoreSupplier;
 
 import java.time.Duration;
 import java.util.Map;
+import org.apache.kafka.streams.state.internals.RocksDbVersionedKeyValueBytesStoreSupplier;
 
 public class MaterializedInternal<K, V, S extends StateStore> extends Materialized<K, V, S> {
 
@@ -99,5 +100,17 @@ public class MaterializedInternal<K, V, S extends StateStore> extends Materializ
 
     Duration retention() {
         return retention;
+    }
+
+    Duration segmentInterval() {
+        return segmentInterval;
+    }
+
+    boolean isVersioned() {
+        if (storeSupplier != null) {
+            return storeSupplier instanceof RocksDbVersionedKeyValueBytesStoreSupplier;
+        } else {
+            return false;
+        }
     }
 }

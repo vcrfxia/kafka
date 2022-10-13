@@ -24,6 +24,7 @@ import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.StoreBuilder;
 import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.state.TimestampedKeyValueStore;
+import org.apache.kafka.streams.state.internals.RocksDbVersionedKeyValueBytesStoreSupplier;
 import org.apache.kafka.streams.state.internals.VersionedKeyValueStoreBuilder;
 
 public class TimestampedKeyValueStoreMaterializer<K, V> {
@@ -40,25 +41,32 @@ public class TimestampedKeyValueStoreMaterializer<K, V> {
     public StoreBuilder<? extends TimestampedKeyValueStore<K, V>> materialize() {
         KeyValueBytesStoreSupplier supplier = (KeyValueBytesStoreSupplier) materialized.storeSupplier();
 
-        final StoreBuilder<? extends TimestampedKeyValueStore<K, V>> builder;
-        if (supplier == null && materialized.storeType() == StoreType.ROCKS_DB) {
-            // TODO(note): hack to materialize all stores as versioned stores for now
-            builder = new VersionedKeyValueStoreBuilder<>(materialized.storeName(),
-                materialized.keySerde(), materialized.valueSerde(), Time.SYSTEM); // TODO: probably not the right place for this. also, does value serde need to be wrapped?
-        } else {
-            if (supplier == null) {
-                switch (materialized.storeType()) {
-                    case IN_MEMORY:
-                        supplier = Stores.inMemoryKeyValueStore(materialized.storeName());
-                        break;
-                    case ROCKS_DB:
+        if (supplier == null) {
+            switch (materialized.storeType()) {
+                case IN_MEMORY:
+                    supplier = Stores.inMemoryKeyValueStore(materialized.storeName());
+                    break;
+                case ROCKS_DB:
+                    if (materialized.isVersioned()) {
+                        supplier = Stores.persistentVersionedKeyValueStore(
+                            materialized.storeName(), materialized.retention(), materialized.segmentInterval()); // TODO(note): doesn't feel right that these come in through the materialized but maybe it's fine since windowed stores seem to do the same thing?
+                    } else {
                         supplier = Stores.persistentTimestampedKeyValueStore(materialized.storeName());
-                        break;
-                    default:
-                        throw new IllegalStateException("Unknown store type: " + materialized.storeType());
-                }
+                    }
+                    break;
+                default:
+                    throw new IllegalStateException("Unknown store type: " + materialized.storeType());
             }
+        }
 
+        final StoreBuilder<? extends TimestampedKeyValueStore<K, V>> builder;
+        if (supplier instanceof RocksDbVersionedKeyValueBytesStoreSupplier) { // TODO: create an interface for this instead of using concrete type
+            builder = new VersionedKeyValueStoreBuilder<>(
+                (RocksDbVersionedKeyValueBytesStoreSupplier) materialized.storeSupplier(),
+                materialized.keySerde(),
+                materialized.valueSerde(),
+                Time.SYSTEM); // TODO: probably not the right place for this. also, does value serde need to be wrapped?
+        } else {
             builder = Stores.timestampedKeyValueStoreBuilder(
                 supplier,
                 materialized.keySerde(),

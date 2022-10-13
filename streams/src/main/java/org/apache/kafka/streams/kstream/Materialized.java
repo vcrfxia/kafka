@@ -64,6 +64,7 @@ public class Materialized<K, V, S extends StateStore> {
     protected boolean cachingEnabled = true;
     protected Map<String, String> topicConfig = new HashMap<>();
     protected Duration retention;
+    protected Duration segmentInterval; // for versioned stores
     public StoreType storeType;
 
     // the built-in state store types
@@ -97,6 +98,7 @@ public class Materialized<K, V, S extends StateStore> {
         this.cachingEnabled = materialized.cachingEnabled;
         this.topicConfig = materialized.topicConfig;
         this.retention = materialized.retention;
+        this.segmentInterval = materialized.segmentInterval;
         this.storeType = materialized.storeType;
     }
 
@@ -283,6 +285,17 @@ public class Materialized<K, V, S extends StateStore> {
             throw new IllegalArgumentException("Retention must not be negative.");
         }
         this.retention = retention;
+        return this;
+    }
+
+    public Materialized<K, V, S> withSegmentInterval(final Duration segmentInterval) throws IllegalArgumentException {
+        final String msgPrefix = prepareMillisCheckFailMsgPrefix(segmentInterval, "segment interval");
+        final long segmentIntervalMs = validateMillisecondDuration(segmentInterval, msgPrefix);
+
+        if (segmentIntervalMs < 0) {
+            throw new IllegalArgumentException("Segment interval must not be negative.");
+        }
+        this.segmentInterval = segmentInterval;
         return this;
     }
 
