@@ -39,10 +39,10 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
     private final RocksDBMetricsRecorder metricsRecorder;
 
     private final RocksDBStore latestValueStore;
-    private final KeyValueSegments segmentStores;
+    private final LogicalKeyValueSegments segmentStores;
     private final LatestValueSchema latestValueSchema;
     private final SegmentValueSchema segmentValueSchema;
-    private final VersionedStoreClient<KeyValueSegment> versionedStoreClient;
+    private final VersionedStoreClient<LogicalKeyValueSegment> versionedStoreClient;
 
     private final RocksDBVersionedStoreRestoreHelper restoreHelper;
     private final VersionedStoreClient<Long> versionedStoreRestoreClient;
@@ -60,15 +60,15 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
         this.name = name;
         this.historyRetention = historyRetention;
         this.metricsRecorder = new RocksDBMetricsRecorder(metricsScope, name);
-        this.latestValueStore = new RocksDBStore(lvsName(name), "rocksdb", metricsRecorder); // TODO: dir name probably isn't right?
-        this.segmentStores = new KeyValueSegments(segmentsName(name), historyRetention, segmentInterval, metricsRecorder);
+        this.latestValueStore = new RocksDBStore(lvsName(name), name, metricsRecorder);
+        this.segmentStores = new LogicalKeyValueSegments(segmentsName(name), name, historyRetention, segmentInterval, metricsRecorder);
         this.latestValueSchema = new LatestValueSchema();
         this.segmentValueSchema = new SegmentValueSchema();
         this.versionedStoreClient = new RocksDBVersionedStoreClient();
         this.restoreHelper = RocksDBVersionedStoreRestoreHelper.makeWithRemovalListener(
             (k, v) -> latestValueStore.put(k, v, true),
             (segmentId, k, v) -> {
-                final KeyValueSegment segment = segmentStores.getOrCreateSegment(segmentId, context); // TODO: update to IfLive once processor time is taken into account
+                final LogicalKeyValueSegment segment = segmentStores.getOrCreateSegment(segmentId, context); // TODO: update to IfLive once processor time is taken into account
                 segment.put(k, v, true);
             }
         );
@@ -172,8 +172,8 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
         }
 
         // check segment stores
-        final List<KeyValueSegment> segments = segmentStores.segments(timestampTo, Long.MAX_VALUE, false);
-        for (final KeyValueSegment segment : segments) {
+        final List<LogicalKeyValueSegment> segments = segmentStores.segments(timestampTo, Long.MAX_VALUE, false);
+        for (final LogicalKeyValueSegment segment : segments) {
             final byte[] segmentValue = segment.get(key);
             if (segmentValue != null) {
                 final long nextTs = segmentValueSchema.getNextTimestamp(segmentValue);
@@ -535,7 +535,7 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
         T getSegmentIfPresent(long segmentId); // TODO(note): hack to allow cache client to delegate getFromSegment() to db client
     }
 
-    private final class RocksDBVersionedStoreClient implements VersionedStoreClient<KeyValueSegment> {
+    private final class RocksDBVersionedStoreClient implements VersionedStoreClient<LogicalKeyValueSegment> {
 
         @Override
         public byte[] getLatestValue(Bytes key, boolean isRestoring) {
@@ -553,23 +553,23 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
         }
 
         @Override
-        public KeyValueSegment getOrCreateSegmentIfLive(long segmentId, ProcessorContext context, long streamTime) {
+        public LogicalKeyValueSegment getOrCreateSegmentIfLive(long segmentId, ProcessorContext context, long streamTime) {
             return segmentStores.getOrCreateSegmentIfLive(segmentId, context, streamTime);
         }
 
         @Override
-        public List<KeyValueSegment> getReverseSegments(long timestampFrom, Bytes key) {
+        public List<LogicalKeyValueSegment> getReverseSegments(long timestampFrom, Bytes key) {
             // do not attempt filter by key because it is slow. return all segments instead.
             return segmentStores.segments(timestampFrom, Long.MAX_VALUE, false);
         }
 
         @Override
-        public byte[] getFromSegment(KeyValueSegment segment, Bytes key, boolean isRestoring) {
+        public byte[] getFromSegment(LogicalKeyValueSegment segment, Bytes key, boolean isRestoring) {
             return segment.get(key, isRestoring);
         }
 
         @Override
-        public void putToSegment(KeyValueSegment segment, Bytes key, byte[] value) {
+        public void putToSegment(LogicalKeyValueSegment segment, Bytes key, byte[] value) {
             // TODO(note): hacky bug fix to avoid writing to a closed segment, will be better to rethink
             // when segments are cleaned in general instead (today happens in getOrCreateSegmentIfLive() which
             // isn't called as methodically with versioned tables as it is with windowed tables)
@@ -579,12 +579,12 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
         }
 
         @Override
-        public long getIdForSegment(KeyValueSegment segment) {
+        public long getIdForSegment(LogicalKeyValueSegment segment) {
             return segment.id;
         }
 
         @Override
-        public KeyValueSegment getSegmentIfPresent(long segmentId) {
+        public LogicalKeyValueSegment getSegmentIfPresent(long segmentId) {
             return segmentStores.getSegment(segmentId);
         }
     }
