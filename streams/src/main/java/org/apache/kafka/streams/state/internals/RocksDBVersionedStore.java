@@ -45,7 +45,9 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
     private final VersionedStoreClient<LogicalKeyValueSegment> versionedStoreClient;
 
     private final RocksDBVersionedStoreRestoreHelper restoreHelper;
-    private final VersionedStoreClient<Long> versionedStoreRestoreClient;
+    private final VersionedStoreClient<Long> cacheEnabledVersionedStoreRestoreClient;
+    private final VersionedStoreClient<LogicalKeyValueSegment> cacheDisabledVersionedStoreRestoreClient;
+    private final boolean isRestoreCacheEnabled = false; // TODO: toggle manually for now
 
     private ProcessorContext context;
     private StateStoreContext stateStoreContext;
@@ -72,7 +74,8 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
                 segment.put(k, v, true);
             }
         );
-        this.versionedStoreRestoreClient = restoreHelper.getRestoreClient(versionedStoreClient, segmentStores::segmentId); // TODO: convert store client to read-only
+        this.cacheEnabledVersionedStoreRestoreClient = restoreHelper.getRestoreClient(versionedStoreClient, segmentStores::segmentId); // TODO: convert store client to read-only
+        this.cacheDisabledVersionedStoreRestoreClient = new RocksDBCacheDisabledVersionedStoreRestoreClient();
     }
 
     // valueAndTimestamp should never come in as null, should always be a null wrapped with a timestamp
@@ -408,26 +411,45 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
 
     // VisibleForTesting
     void restoreBatch(final Collection<ConsumerRecord<byte[], byte[]>> records) {
-        LOG.info(String.format("vxia debug: restoreBatch: records.size() (%d)", records.size()));
+//        LOG.info(String.format("vxia debug: restoreBatch: records.size() (%d)", records.size()));
 
-        for (ConsumerRecord<byte[], byte[]> record : records) {
-            putInternal(
-                latestValueSchema,
-                segmentValueSchema,
-                versionedStoreRestoreClient,
-                segmentStores::segmentId, // TODO: extract into variable?
-                context,
-                observedStreamTime,
-                historyRetention,
-                new Bytes(record.key()),
-                ValueAndTimestamp.makeAllowNullable(record.value(), record.timestamp())
-            );
+        // TODO: this duplication is silly -- hack by repeating code for now to avoid updating method signatures for generics
+        if (isRestoreCacheEnabled) {
+            for (ConsumerRecord<byte[], byte[]> record : records) {
+                putInternal(
+                    latestValueSchema,
+                    segmentValueSchema,
+                    cacheEnabledVersionedStoreRestoreClient,
+                    segmentStores::segmentId, // TODO: extract into variable?
+                    context,
+                    observedStreamTime,
+                    historyRetention,
+                    new Bytes(record.key()),
+                    ValueAndTimestamp.makeAllowNullable(record.value(), record.timestamp())
+                );
+            }
+        } else {
+            for (ConsumerRecord<byte[], byte[]> record : records) {
+                putInternal(
+                    latestValueSchema,
+                    segmentValueSchema,
+                    cacheDisabledVersionedStoreRestoreClient,
+                    segmentStores::segmentId, // TODO: extract into variable?
+                    context,
+                    observedStreamTime,
+                    historyRetention,
+                    new Bytes(record.key()),
+                    ValueAndTimestamp.makeAllowNullable(record.value(), record.timestamp())
+                );
+            }
         }
     }
 
     // VisibleForTesting
     void finishRestore() {
-        restoreHelper.flushAll();
+        if (isRestoreCacheEnabled) {
+            restoreHelper.flushAll();
+        }
     }
 
     @Override
@@ -535,7 +557,22 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
         T getSegmentIfPresent(long segmentId); // TODO(note): hack to allow cache client to delegate getFromSegment() to db client
     }
 
-    private final class RocksDBVersionedStoreClient implements VersionedStoreClient<LogicalKeyValueSegment> {
+    // TODO: refactor to be cleaner (plug in lvsPutter and segmentPutter instead of using inheritance)
+    private final class RocksDBCacheDisabledVersionedStoreRestoreClient extends RocksDBVersionedStoreClient {
+
+        @Override
+        public void putLatestValue(Bytes key, byte[] value) {
+            latestValueStore.put(key, value, true);
+        }
+
+        @Override
+        public void putToSegment(LogicalKeyValueSegment segment, Bytes key, byte[] value) {
+            // TODO: old version of this has isOpen() check which no longer makes sense for restoring
+            segment.put(key, value, true);
+        }
+    }
+
+    private class RocksDBVersionedStoreClient implements VersionedStoreClient<LogicalKeyValueSegment> {
 
         @Override
         public byte[] getLatestValue(Bytes key, boolean isRestoring) {

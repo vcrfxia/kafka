@@ -29,7 +29,7 @@ public class LogicalKeyValueSegments extends AbstractSegments<LogicalKeyValueSeg
         this.physicalStore = new RocksDBStore(name, parentDir, metricsRecorder, true);
     }
 
-    // TODO(note): ugly hack to allow RocksDBVersionedStoreRestoreClient to delegate getFromSegment() to RocksDBVersionedStoreClient
+    // TODO(note): ugly hack to allow RocksDBCacheEnabledVersionedStoreRestoreClient to delegate getFromSegment() to RocksDBVersionedStoreClient
     public LogicalKeyValueSegment getSegment(final long segmentId) {
         return segments.get(segmentId);
     }

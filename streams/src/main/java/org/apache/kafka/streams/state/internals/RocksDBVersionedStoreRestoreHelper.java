@@ -90,15 +90,15 @@ public class RocksDBVersionedStoreRestoreHelper {
         final VersionedStoreClient<?> readOnlyDelegate,
         final Function<Long, Long> segmentIdGetter
     ) {
-        return new RocksDBVersionedStoreRestoreClient<>(readOnlyDelegate, segmentIdGetter);
+        return new RocksDBCacheEnabledVersionedStoreRestoreClient<>(readOnlyDelegate, segmentIdGetter);
     }
 
-    private class RocksDBVersionedStoreRestoreClient<T> implements VersionedStoreClient<Long> {
+    private class RocksDBCacheEnabledVersionedStoreRestoreClient<T> implements VersionedStoreClient<Long> {
 
         private final VersionedStoreClient<T> readOnlyDelegate;
         private final Function<Long, Long> segmentIdGetter;
 
-        RocksDBVersionedStoreRestoreClient(
+        RocksDBCacheEnabledVersionedStoreRestoreClient(
             final VersionedStoreClient<T> readOnlyDelegate,
             final Function<Long, Long> segmentIdGetter
         ) {
