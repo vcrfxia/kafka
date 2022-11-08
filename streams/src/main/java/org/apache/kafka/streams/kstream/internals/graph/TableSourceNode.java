@@ -94,6 +94,7 @@ public class TableSourceNode<K, V> extends SourceGraphNode<K, V> {
             throw new IllegalStateException("A table source node must have a single topic as input");
         }
 
+        // TODO(here): how to tell whether the materialized instance is for a versioned table or not, in order to call different materializer?
         // TODO: we assume source KTables can only be timestamped-key-value stores for now.
         // should be expanded for other types of stores as well.
         final StoreBuilder<? extends TimestampedKeyValueStore<K, V>> storeBuilder =

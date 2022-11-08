@@ -236,6 +236,7 @@ public class KTableImpl<K, S, V> extends AbstractStream<K, V> implements KTable<
         return doFilter(predicate, named, null, false);
     }
 
+    // TODO(here): this is a problem: need to add versioned store option here as well
     @Override
     public KTable<K, V> filter(final Predicate<? super K, ? super V> predicate,
                                final Named named,

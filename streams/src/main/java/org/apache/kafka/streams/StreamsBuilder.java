@@ -47,6 +47,7 @@ import java.util.Collections;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.regex.Pattern;
+import org.apache.kafka.streams.state.VersionedKeyValueStore;
 
 /**
  * {@code StreamsBuilder} provide the high-level Kafka Streams DSL to specify a Kafka Streams topology.
@@ -270,8 +271,6 @@ public class StreamsBuilder {
         return internalStreamsBuilder.table(topic, consumedInternal, materializedInternal);
     }
 
-    // TODO(here): add versions of this method to take VersionedKeyValueStore instead of KeyValueStore, and wire them in
-
     /**
      * Create a {@link KTable} for the specified topic.
      * The default {@code "auto.offset.reset"} strategy and default key and value deserializers as specified in the
@@ -356,6 +355,54 @@ public class StreamsBuilder {
 
         final ConsumedInternal<K, V> consumedInternal =
                 new ConsumedInternal<>(Consumed.with(materializedInternal.keySerde(), materializedInternal.valueSerde()));
+
+        return internalStreamsBuilder.table(topic, consumedInternal, materializedInternal);
+    }
+
+    public synchronized <K, V> KTable<K, V> tableWithVersioning(final String topic,
+                                                  final Consumed<K, V> consumed,
+                                                  final Materialized<K, V, VersionedKeyValueStore<Bytes, byte[]>> materialized) {
+        Objects.requireNonNull(topic, "topic can't be null");
+        Objects.requireNonNull(consumed, "consumed can't be null");
+        Objects.requireNonNull(materialized, "materialized can't be null");
+        final ConsumedInternal<K, V> consumedInternal = new ConsumedInternal<>(consumed);
+        materialized.withKeySerde(consumedInternal.keySerde()).withValueSerde(consumedInternal.valueSerde());
+
+        final MaterializedInternal<K, V, VersionedKeyValueStore<Bytes, byte[]>> materializedInternal =
+            new MaterializedInternal<>(materialized, internalStreamsBuilder, topic + "-");
+
+        return internalStreamsBuilder.table(topic, consumedInternal, materializedInternal);
+    }
+
+    public synchronized <K, V> KTable<K, V> tableWithVersioning(final String topic) {
+        return tableWithVersioning(topic, new ConsumedInternal<>());
+    }
+
+    public synchronized <K, V> KTable<K, V> tableWithVersioning(final String topic,
+                                                  final Consumed<K, V> consumed) {
+        Objects.requireNonNull(topic, "topic can't be null");
+        Objects.requireNonNull(consumed, "consumed can't be null");
+        final ConsumedInternal<K, V> consumedInternal = new ConsumedInternal<>(consumed);
+
+        final MaterializedInternal<K, V, VersionedKeyValueStore<Bytes, byte[]>> materializedInternal =
+            new MaterializedInternal<>(
+                Materialized.with(consumedInternal.keySerde(), consumedInternal.valueSerde()), // TODO(here): how does this work? how can the default Materialized know to return a versioning store?
+                internalStreamsBuilder,
+                topic + "-");
+
+        return internalStreamsBuilder.table(topic, consumedInternal, materializedInternal);
+    }
+
+    public synchronized <K, V> KTable<K, V> tableWithVersioning(final String topic,
+                                                  final Materialized<K, V, VersionedKeyValueStore<Bytes, byte[]>> materialized) {
+        Objects.requireNonNull(topic, "topic can't be null");
+        Objects.requireNonNull(materialized, "materialized can't be null");
+
+        final MaterializedInternal<K, V, VersionedKeyValueStore<Bytes, byte[]>> materializedInternal =
+            new MaterializedInternal<>(materialized, internalStreamsBuilder, topic + "-");
+
+        final ConsumedInternal<K, V> consumedInternal =
+            new ConsumedInternal<>(Consumed.with(materializedInternal.keySerde(), materializedInternal.valueSerde()));
 
         return internalStreamsBuilder.table(topic, consumedInternal, materializedInternal);
     }
