@@ -21,16 +21,17 @@ import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
 
-import org.apache.kafka.streams.state.VersionedKeyValueStore;
+import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
+import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 import org.apache.kafka.streams.state.internals.CachingTimeAwareKeyValueStore.CacheableVersionedStoreCallbacks;
 
 public class VersionedKeyValueStoreBuilder<K, V>
-    extends AbstractStoreBuilder<K, ValueAndTimestamp<V>, VersionedKeyValueStore<K, V>> {
+    extends AbstractStoreBuilder<K, ValueAndTimestamp<V>, VersionedKeyValueStoreInternal<K, V>> {
 
-    private final RocksDbVersionedKeyValueBytesStoreSupplier storeSupplier;
+    private final VersionedBytesStoreSupplier storeSupplier;
     private final Serde<V> innerValueSerde;
 
-    public VersionedKeyValueStoreBuilder(final RocksDbVersionedKeyValueBytesStoreSupplier storeSupplier,
+    public VersionedKeyValueStoreBuilder(final VersionedBytesStoreSupplier storeSupplier,
                                            final Serde<K> keySerde,
                                            final Serde<V> valueSerde,
                                            final Time time) {
@@ -44,8 +45,9 @@ public class VersionedKeyValueStoreBuilder<K, V>
     }
 
     @Override
-    public VersionedKeyValueStore<K, V> build() {
-        VersionedKeyValueStore<Bytes, byte[]> store = new RocksDBVersionedStore(
+    public VersionedKeyValueStoreInternal<K, V> build() {
+        // TODO(here): this needs to be updated to actually call storeSupplier.get() and wrap the result in the internal representation
+        VersionedKeyValueStoreInternal<Bytes, byte[]> store = new RocksDBVersionedStore(
             name,
             storeSupplier.metricsScope(),
             storeSupplier.historyRetentionMs(),
@@ -64,7 +66,7 @@ public class VersionedKeyValueStoreBuilder<K, V>
         return storeSupplier.historyRetentionMs();
     }
 
-    private VersionedKeyValueStore<Bytes, byte[]> maybeWrapCaching(final VersionedKeyValueStore<Bytes, byte[]> inner) {
+    private VersionedKeyValueStoreInternal<Bytes, byte[]> maybeWrapCaching(final VersionedKeyValueStoreInternal<Bytes, byte[]> inner) {
         if (!enableCaching) {
             return inner;
         }
@@ -89,7 +91,7 @@ public class VersionedKeyValueStoreBuilder<K, V>
         });
     }
 
-    private VersionedKeyValueStore<Bytes, byte[]> maybeWrapLogging(final VersionedKeyValueStore<Bytes, byte[]> inner) {
+    private VersionedKeyValueStoreInternal<Bytes, byte[]> maybeWrapLogging(final VersionedKeyValueStoreInternal<Bytes, byte[]> inner) {
         if (!enableLogging) {
             return inner;
         }

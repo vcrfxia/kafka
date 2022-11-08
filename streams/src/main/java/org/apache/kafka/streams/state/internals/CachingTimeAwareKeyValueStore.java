@@ -29,14 +29,14 @@ import org.apache.kafka.streams.query.QueryConfig;
 import org.apache.kafka.streams.query.QueryResult;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
-import org.apache.kafka.streams.state.VersionedKeyValueStore;
+import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 // TODO: de-dup from CachingKeyValueStore
 public class CachingTimeAwareKeyValueStore
-    extends WrappedStateStore<VersionedKeyValueStore<Bytes, byte[]>, byte[], ValueAndTimestamp<byte[]>>
-    implements VersionedKeyValueStore<Bytes, byte[]>, CachedStateStore<byte[], ValueAndTimestamp<byte[]>> {
+    extends WrappedStateStore<VersionedKeyValueStoreInternal<Bytes, byte[]>, byte[], ValueAndTimestamp<byte[]>>
+    implements VersionedKeyValueStoreInternal<Bytes, byte[]>, CachedStateStore<byte[], ValueAndTimestamp<byte[]>> {
     // TODO: why does CachedStateStore use byte[] for key type, instead of Bytes?
     // TODO: is it preferable to create a new interface analogous to CachedStateStore instead?
 
@@ -58,7 +58,7 @@ public class CachingTimeAwareKeyValueStore
     }
 
     CachingTimeAwareKeyValueStore(
-        final VersionedKeyValueStore<Bytes, byte[]> inner,
+        final VersionedKeyValueStoreInternal<Bytes, byte[]> inner,
         final CacheableVersionedStoreCallbacks storeCallbacks
     ) {
         super(inner);

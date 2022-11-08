@@ -26,8 +26,7 @@ import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.state.KeyValueStoreTestDriver;
 import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
-import org.apache.kafka.streams.state.VersionedKeyValueStore;
-import org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.DataRecord;
+import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 import org.apache.kafka.test.InternalMockProcessorContext;
 import org.junit.After;
 import org.junit.Before;
@@ -53,7 +52,7 @@ public class CachingVersionedStoreFunctionalTest {
 
     protected KeyValueStoreTestDriver<String, String> driver;
     protected InternalMockProcessorContext context;
-    protected VersionedKeyValueStore<String, String> store;
+    protected VersionedKeyValueStoreInternal<String, String> store;
 
     @Before
     public void before() {

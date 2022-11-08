@@ -24,13 +24,15 @@ import org.apache.kafka.streams.processor.internals.metrics.TaskMetrics;
 import org.apache.kafka.streams.query.Position;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.streams.state.VersionedKeyValueStore;
 import org.apache.kafka.streams.state.internals.RocksDBVersionedStoreSegmentValueFormatter.SegmentValue;
 import org.apache.kafka.streams.state.internals.RocksDBVersionedStoreSegmentValueFormatter.SegmentValue.SegmentSearchResult;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<Bytes, byte[]> {
+// TODO(here): these interfaces need to be sorted out, in conjunction with figuring out the wrapper to convert between the two
+public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<Bytes, byte[]>, VersionedKeyValueStore<Bytes, byte[]> {
     private static final Logger LOG = LoggerFactory.getLogger(RocksDBVersionedStore.class);
     private static final long SENTINEL_TIMESTAMP = -1L;
 

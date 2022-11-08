@@ -12,11 +12,11 @@ import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.processor.internals.InternalProcessorContext;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
-import org.apache.kafka.streams.state.VersionedKeyValueStore;
+import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 
-public class ChangeLoggingTimeAwareKeyValueBytesStore<S extends VersionedKeyValueStore<Bytes, byte[]>>
+public class ChangeLoggingTimeAwareKeyValueBytesStore<S extends VersionedKeyValueStoreInternal<Bytes, byte[]>>
         extends WrappedStateStore<S, byte[], ValueAndTimestamp<byte[]>>
-        implements VersionedKeyValueStore<Bytes, byte[]> {
+        implements VersionedKeyValueStoreInternal<Bytes, byte[]> {
 
     InternalProcessorContext context;
 

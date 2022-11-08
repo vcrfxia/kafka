@@ -36,14 +36,14 @@ import org.apache.kafka.streams.query.RangeQuery;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.StateSerdes;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
-import org.apache.kafka.streams.state.VersionedKeyValueStore;
+import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 import org.apache.kafka.streams.state.internals.StoreQueryUtils.QueryHandler;
 import org.apache.kafka.streams.state.internals.metrics.StateStoreMetrics;
 
 // TODO: de-dup from MeteredKeyValueStore
 public class MeteredTimeAwareKeyValueStore<K, V>
-    extends WrappedStateStore<VersionedKeyValueStore<Bytes, byte[]>, K, ValueAndTimestamp<V>>
-    implements VersionedKeyValueStore<K, V> {
+    extends WrappedStateStore<VersionedKeyValueStoreInternal<Bytes, byte[]>, K, ValueAndTimestamp<V>>
+    implements VersionedKeyValueStoreInternal<K, V> {
 
     final Serde<K> keySerde;
     final Serde<V> valueSerde;
@@ -78,7 +78,7 @@ public class MeteredTimeAwareKeyValueStore<K, V>
             )
         );
 
-    MeteredTimeAwareKeyValueStore(final VersionedKeyValueStore<Bytes, byte[]> inner,
+    MeteredTimeAwareKeyValueStore(final VersionedKeyValueStoreInternal<Bytes, byte[]> inner,
                                   final String metricsScope,
                                   final Time time,
                                   final Serde<K> keySerde,
@@ -165,7 +165,7 @@ public class MeteredTimeAwareKeyValueStore<K, V>
     @Override
     public boolean setFlushListener(final CacheFlushListener<K, ValueAndTimestamp<V>> listener,
                                     final boolean sendOldValues) {
-        final VersionedKeyValueStore<Bytes, byte[]> wrapped = wrapped();
+        final VersionedKeyValueStoreInternal<Bytes, byte[]> wrapped = wrapped();
         if (wrapped instanceof CachedStateStore) {
             return ((CachedStateStore<byte[], ValueAndTimestamp<byte[]>>) wrapped).setFlushListener( // TODO: why is key here byte[] rather than Bytes?
                 record -> listener.apply(

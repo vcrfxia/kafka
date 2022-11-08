@@ -16,12 +16,11 @@
  */
 package org.apache.kafka.streams.state.internals;
 
-import java.time.Duration;
 import org.apache.kafka.common.utils.Bytes;
-import org.apache.kafka.streams.state.KeyValueBytesStoreSupplier;
-import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
+import org.apache.kafka.streams.state.VersionedKeyValueStore;
 
-public class RocksDbVersionedKeyValueBytesStoreSupplier implements KeyValueBytesStoreSupplier {
+public class RocksDbVersionedKeyValueBytesStoreSupplier implements VersionedBytesStoreSupplier {
 
     private final String name;
     private final long historyRetentionMs;
@@ -41,6 +40,7 @@ public class RocksDbVersionedKeyValueBytesStoreSupplier implements KeyValueBytes
         return name;
     }
 
+    @Override
     public long historyRetentionMs() {
         return historyRetentionMs;
     }
@@ -50,8 +50,8 @@ public class RocksDbVersionedKeyValueBytesStoreSupplier implements KeyValueBytes
     }
 
     @Override
-    public KeyValueStore<Bytes, byte[]> get() {
-        throw new IllegalStateException("not meant to be called"); // TODO(note): total hack where this supplier is just used to carry info that the store is versioned. builder and materializer do the actual heavy-lifting for creating the store since it doesn't make sense to represent a versioned store as a bytes store
+    public VersionedKeyValueStore<Bytes, byte[]> get() {
+        return new RocksDBVersionedStore(name, metricsScope(), historyRetentionMs, segmentIntervalMs);
     }
 
     @Override

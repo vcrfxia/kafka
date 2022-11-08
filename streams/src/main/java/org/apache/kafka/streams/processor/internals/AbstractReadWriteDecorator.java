@@ -28,7 +28,7 @@ import org.apache.kafka.streams.state.SessionStore;
 import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 import org.apache.kafka.streams.state.TimestampedWindowStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
-import org.apache.kafka.streams.state.VersionedKeyValueStore;
+import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 import org.apache.kafka.streams.state.WindowStore;
 import org.apache.kafka.streams.state.WindowStoreIterator;
 import org.apache.kafka.streams.state.internals.WrappedStateStore;
@@ -61,8 +61,8 @@ abstract class AbstractReadWriteDecorator<T extends StateStore, K, V> extends Wr
     }
 
     static StateStore getReadWriteStore(final StateStore store) {
-        if (store instanceof VersionedKeyValueStore) {
-            return new VersionedKeyValueStoreReadWriteDecorator<>((VersionedKeyValueStore<?, ?>) store);
+        if (store instanceof VersionedKeyValueStoreInternal) {
+            return new VersionedKeyValueStoreReadWriteDecorator<>((VersionedKeyValueStoreInternal<?, ?>) store);
         } else if (store instanceof TimestampedKeyValueStore) {
             return new TimestampedKeyValueStoreReadWriteDecorator<>((TimestampedKeyValueStore<?, ?>) store);
         } else if (store instanceof KeyValueStore) {
@@ -157,10 +157,10 @@ abstract class AbstractReadWriteDecorator<T extends StateStore, K, V> extends Wr
     }
 
     static class VersionedKeyValueStoreReadWriteDecorator<K, V>
-        extends KeyValueStoreReadWriteDecorator<VersionedKeyValueStore<K, V>, K, ValueAndTimestamp<V>>
-        implements VersionedKeyValueStore<K, V> {
+        extends KeyValueStoreReadWriteDecorator<VersionedKeyValueStoreInternal<K, V>, K, ValueAndTimestamp<V>>
+        implements VersionedKeyValueStoreInternal<K, V> {
 
-        VersionedKeyValueStoreReadWriteDecorator(final VersionedKeyValueStore<K, V> inner) {
+        VersionedKeyValueStoreReadWriteDecorator(final VersionedKeyValueStoreInternal<K, V> inner) {
             super(inner);
         }
 

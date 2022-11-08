@@ -111,8 +111,7 @@ public final class Stores {
         return new RocksDbKeyValueBytesStoreSupplier(name, true);
     }
 
-    // TODO: this shouldn't be a public interface given that you can't call get() on it
-    public static KeyValueBytesStoreSupplier persistentVersionedKeyValueStore(final String name,
+    public static VersionedBytesStoreSupplier persistentVersionedKeyValueStore(final String name,
                                                                               final Duration historyRetention,
                                                                               final Duration segmentInterval) {
         Objects.requireNonNull(name, "name cannot be null");

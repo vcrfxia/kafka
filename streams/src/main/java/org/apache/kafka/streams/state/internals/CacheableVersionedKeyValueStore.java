@@ -1,10 +1,10 @@
 package org.apache.kafka.streams.state.internals;
 
 import org.apache.kafka.streams.state.ValueAndTimestamp;
-import org.apache.kafka.streams.state.VersionedKeyValueStore;
+import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 
 // TODO: rethink how this wiring between cache and underlying store works
-public interface CacheableVersionedKeyValueStore<K, V> extends VersionedKeyValueStore<K, V> {
+public interface CacheableVersionedKeyValueStore<K, V> extends VersionedKeyValueStoreInternal<K, V> {
 
     // represents new value replacing existing value from cache, so previous value now
     // needs to be written to underlying store.

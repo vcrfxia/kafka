@@ -270,6 +270,8 @@ public class StreamsBuilder {
         return internalStreamsBuilder.table(topic, consumedInternal, materializedInternal);
     }
 
+    // TODO(here): add versions of this method to take VersionedKeyValueStore instead of KeyValueStore, and wire them in
+
     /**
      * Create a {@link KTable} for the specified topic.
      * The default {@code "auto.offset.reset"} strategy and default key and value deserializers as specified in the

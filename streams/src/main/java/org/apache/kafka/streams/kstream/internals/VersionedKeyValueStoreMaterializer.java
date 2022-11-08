@@ -17,50 +17,60 @@
 package org.apache.kafka.streams.kstream.internals;
 
 import org.apache.kafka.common.utils.Bytes;
+import org.apache.kafka.common.utils.Time;
+import org.apache.kafka.streams.kstream.Materialized.StoreType;
 import org.apache.kafka.streams.state.KeyValueBytesStoreSupplier;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.StoreBuilder;
 import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.state.TimestampedKeyValueStore;
+import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
+import org.apache.kafka.streams.state.VersionedKeyValueStore;
+import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
+import org.apache.kafka.streams.state.internals.RocksDbVersionedKeyValueBytesStoreSupplier;
+import org.apache.kafka.streams.state.internals.VersionedKeyValueStoreBuilder;
 
-public class TimestampedKeyValueStoreMaterializer<K, V> {
-    private final MaterializedInternal<K, V, KeyValueStore<Bytes, byte[]>> materialized;
+public class VersionedKeyValueStoreMaterializer<K, V> {
+    private final MaterializedInternal<K, V, VersionedKeyValueStore<Bytes, byte[]>> materialized;
 
-    public TimestampedKeyValueStoreMaterializer(final MaterializedInternal<K, V, KeyValueStore<Bytes, byte[]>> materialized) {
+    public VersionedKeyValueStoreMaterializer(final MaterializedInternal<K, V, VersionedKeyValueStore<Bytes, byte[]>> materialized) {
         this.materialized = materialized;
     }
 
     /**
      * @return  StoreBuilder
      */
-    public StoreBuilder<TimestampedKeyValueStore<K, V>> materialize() {
-        KeyValueBytesStoreSupplier supplier = (KeyValueBytesStoreSupplier) materialized.storeSupplier();
+    public StoreBuilder<VersionedKeyValueStoreInternal<K, V>> materialize() {
+        VersionedBytesStoreSupplier supplier = (VersionedBytesStoreSupplier) materialized.storeSupplier();
 
         if (supplier == null) {
             switch (materialized.storeType()) {
                 case IN_MEMORY:
-                    supplier = Stores.inMemoryKeyValueStore(materialized.storeName());
-                    break;
+                    throw new UnsupportedOperationException("in memory versioned stores not implemented");
                 case ROCKS_DB:
-                    supplier = Stores.persistentTimestampedKeyValueStore(materialized.storeName());
+                    supplier = Stores.persistentVersionedKeyValueStore(
+                        materialized.storeName(), materialized.retention(), materialized.segmentInterval()); // TODO(note): doesn't feel right that these come in through the materialized but maybe it's fine since windowed stores seem to do the same thing?
                     break;
                 default:
                     throw new IllegalStateException("Unknown store type: " + materialized.storeType());
             }
         }
 
-        final StoreBuilder<TimestampedKeyValueStore<K, V>> builder = Stores.timestampedKeyValueStoreBuilder(
+        final StoreBuilder<VersionedKeyValueStoreInternal<K, V>> builder = new VersionedKeyValueStoreBuilder<>(
             supplier,
             materialized.keySerde(),
-            materialized.valueSerde());
+            materialized.valueSerde(),
+            Time.SYSTEM); // TODO: probably not the right place for this. also, does value serde need to be wrapped?
 
         if (materialized.loggingEnabled()) {
             builder.withLoggingEnabled(materialized.logConfig());
         } else {
+            // TODO: do we want to enable disabling logging?
             builder.withLoggingDisabled();
         }
 
         if (materialized.cachingEnabled()) {
+            // TODO: throw since enabling caching is a no-op?
             builder.withCachingEnabled();
         }
         return builder;
