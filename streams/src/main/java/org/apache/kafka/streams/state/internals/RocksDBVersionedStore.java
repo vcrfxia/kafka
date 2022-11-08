@@ -294,21 +294,6 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     }
 
     @Override
-    public void deleteHistory(final long timestampTo) { // TODO: where is deleteHistory called from?
-        LOG.info(String.format("vxia debug: deleteHistory: tsTo (%d)",
-            timestampTo
-        ));
-
-        // TODO: do we actually need to call explicit cleanup on segments?
-        // cleanup is already called implicitly whenever getOrCreateSegmentIfLive() is called,
-        // by using the stream time passed in with the call
-        // looks like getOrCreateSegmentIfLive() isn't called consistently on put() so it's
-        // probably better to add an explicit call rather than rely on this. might make sense to
-        // add a call into put() rather than have a separate method here. might also be good to
-        // remove the implicit cleanup in AbstractSegments in order to avoid overhead
-    }
-
-    @Override
     public String name() {
         return name;
     }

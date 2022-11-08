@@ -84,15 +84,4 @@ public interface VersionedKeyValueStoreInternal<K, V> extends TimestampedKeyValu
   default KeyValueIterator<K, ValueAndTimestamp<V>> reverseAll(long timestampTo) {
     throw new UnsupportedOperationException();
   }
-
-  /**
-   * Delete version history up through timestampTo. There is no guarantee that all older versions
-   * will be deleted immediately as a result of this call; the method invocation indicates that
-   * older versions may be deleted.
-   *
-   * @param timestampTo History versions with timestamp no later than this timestamp may be
-   *                    deleted from the store.
-   * @throws InvalidStateStoreException if the store is not initialized
-   */
-  void deleteHistory(long timestampTo);
 }

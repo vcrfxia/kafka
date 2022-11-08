@@ -139,11 +139,6 @@ public class ChangeLoggingTimeAwareKeyValueBytesStore<S extends VersionedKeyValu
         return wrapped().reverseAll(timestampTo);
     }
 
-    @Override
-    public void deleteHistory(final long timestampTo) {
-        wrapped().deleteHistory(timestampTo);
-    }
-
     protected void log(final Bytes key, final ValueAndTimestamp<byte[]> value) {
         // TODO(note): this logic stays pretty much the same but need to figure out where to change configs for the topic
         context.logChange(

@@ -369,11 +369,6 @@ public class MeteredTimeAwareKeyValueStore<K, V>
     }
 
     @Override
-    public void deleteHistory(final long timestampTo) {
-        wrapped().deleteHistory(timestampTo);
-    }
-
-    @Override
     public void flush() {
         maybeMeasureLatency(super::flush, time, flushSensor);
     }
