@@ -32,7 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 // TODO(here): these interfaces need to be sorted out, in conjunction with figuring out the wrapper to convert between the two
-public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<Bytes, byte[]>, VersionedKeyValueStore<Bytes, byte[]> {
+public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte[]> {
     private static final Logger LOG = LoggerFactory.getLogger(RocksDBVersionedStore.class);
     private static final long SENTINEL_TIMESTAMP = -1L;
 
@@ -452,88 +452,6 @@ public class RocksDBVersionedStore implements CacheableVersionedKeyValueStore<By
         if (isRestoreCacheEnabled) {
             restoreHelper.flushAll();
         }
-    }
-
-    @Override
-    public void replaceFromCache(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp, long nextTimestamp) {
-        // put bypassing latest value, update next timestamp
-//        LOG.info(String.format("vxia debug: replaceFromCache: key (%s), value (%s), ts (%d), nextTs (%d)",
-//            key.toString(),
-//            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
-//            valueAndTimestamp.timestamp(),
-//            nextTimestamp
-//        ));
-
-        bypassCacheInternal(key, valueAndTimestamp, nextTimestamp);
-    }
-
-    @Override
-    public void bypassCache(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp, final long nextTimestamp) {
-        // put bypassing latest value, next timestamp should not need an update
-//        LOG.info(String.format("vxia debug: bypassCache: key (%s), value (%s), ts (%d), nextTs (%d)",
-//            key.toString(),
-//            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
-//            valueAndTimestamp.timestamp(),
-//            nextTimestamp
-//        ));
-
-        bypassCacheInternal(key, valueAndTimestamp, nextTimestamp);
-    }
-
-    private void bypassCacheInternal(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp, final long nextTimestamp) {
-        // TODO: this update might only be necessary from replaceFromCache() and not bypassCache()?
-        observedStreamTime = Math.max(observedStreamTime, nextTimestamp);
-
-        long foundTs = nextTimestamp;
-        // bypass latest value store
-        // search in segments
-        final PutStatus status = putSegments(
-            segmentValueSchema,
-            versionedStoreClient,
-            segmentStores::segmentId,
-            context,
-            observedStreamTime,
-            historyRetention,
-            key,
-            valueAndTimestamp,
-            foundTs
-        );
-        if (status.isComplete) {
-            return;
-        } else {
-            foundTs = status.foundTs;
-        }
-
-        // ran out of segments to search. insert into tentative segment.
-        putFallThrough(
-            latestValueSchema,
-            segmentValueSchema,
-            versionedStoreClient,
-            segmentStores::segmentId,
-            context,
-            observedStreamTime,
-            key,
-            valueAndTimestamp,
-            foundTs
-        );
-    }
-
-    @Override
-    public void newKeyInsertedToCache(final Bytes key, long nextTimestamp) {
-        // move latest value to segment, update next timestamp in the process
-        LOG.info(String.format("vxia debug: newKeyInsertedToCache: nextTs (%d)", nextTimestamp));
-
-        observedStreamTime = putInternal(
-          latestValueSchema,
-          segmentValueSchema,
-          versionedStoreClient,
-          segmentStores::segmentId,
-          context,
-          observedStreamTime,
-          historyRetention,
-          key,
-          ValueAndTimestamp.makeAllowNullable(null, nextTimestamp)
-        );
     }
 
     interface VersionedStoreClient<T> {

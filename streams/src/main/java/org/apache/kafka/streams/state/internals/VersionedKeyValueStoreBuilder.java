@@ -23,7 +23,6 @@ import org.apache.kafka.streams.state.ValueAndTimestamp;
 
 import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
 import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
-import org.apache.kafka.streams.state.internals.CachingTimeAwareKeyValueStore.CacheableVersionedStoreCallbacks;
 
 public class VersionedKeyValueStoreBuilder<K, V>
     extends AbstractStoreBuilder<K, ValueAndTimestamp<V>, VersionedKeyValueStoreInternal<K, V>> {
@@ -55,7 +54,7 @@ public class VersionedKeyValueStoreBuilder<K, V>
         );
 
         return new MeteredTimeAwareKeyValueStore<>(
-            maybeWrapCaching(maybeWrapLogging(store)),
+            maybeWrapLogging(store), // TODO(note): there used to be a caching layer here but we won't have one for versioned tables
             storeSupplier.metricsScope(),
             time,
             keySerde,
@@ -66,37 +65,10 @@ public class VersionedKeyValueStoreBuilder<K, V>
         return storeSupplier.historyRetentionMs();
     }
 
-    private VersionedKeyValueStoreInternal<Bytes, byte[]> maybeWrapCaching(final VersionedKeyValueStoreInternal<Bytes, byte[]> inner) {
-        if (!enableCaching) {
-            return inner;
-        }
-        if (!(inner instanceof CacheableVersionedKeyValueStore)) {
-            throw new IllegalArgumentException("cannot enable caching for a versioned store which does not support it");
-        }
-        return new CachingTimeAwareKeyValueStore(inner, new CacheableVersionedStoreCallbacks() {
-            @Override
-            public void replaceFromCache(Bytes key, ValueAndTimestamp<byte[]> value, long nextTimestamp) {
-                ((CacheableVersionedKeyValueStore<Bytes, byte[]>) inner).replaceFromCache(key, value, nextTimestamp);
-            }
-
-            @Override
-            public void bypassCache(Bytes key, ValueAndTimestamp<byte[]> value, long nextTimestamp) {
-                ((CacheableVersionedKeyValueStore<Bytes, byte[]>) inner).bypassCache(key, value, nextTimestamp);
-            }
-
-            @Override
-            public void newKeyInsertedToCache(Bytes key, long nextTimestamp) {
-                ((CacheableVersionedKeyValueStore<Bytes, byte[]>) inner).newKeyInsertedToCache(key, nextTimestamp);
-            }
-        });
-    }
-
     private VersionedKeyValueStoreInternal<Bytes, byte[]> maybeWrapLogging(final VersionedKeyValueStoreInternal<Bytes, byte[]> inner) {
         if (!enableLogging) {
             return inner;
         }
-        return inner instanceof CacheableVersionedKeyValueStore
-            ? new CacheableChangeLoggingTimeAwareKeyValueBytesStore((CacheableVersionedKeyValueStore<Bytes, byte[]>) inner)
-            : new ChangeLoggingTimeAwareKeyValueBytesStore<>(inner);
+        return new ChangeLoggingTimeAwareKeyValueBytesStore<>(inner);
     }
 }
