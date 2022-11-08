@@ -45,13 +45,7 @@ public class VersionedKeyValueStoreBuilder<K, V>
 
     @Override
     public VersionedKeyValueStoreInternal<K, V> build() {
-        // TODO(here): this needs to be updated to actually call storeSupplier.get() and wrap the result in the internal representation
-        VersionedKeyValueStoreInternal<Bytes, byte[]> store = new RocksDBVersionedStore(
-            name,
-            storeSupplier.metricsScope(),
-            storeSupplier.historyRetentionMs(),
-            storeSupplier.segmentIntervalMs()
-        );
+        VersionedKeyValueStoreInternal<Bytes, byte[]> store = new VersionedKeyValueStoreAdaptor<>(storeSupplier.get());
 
         return new MeteredTimeAwareKeyValueStore<>(
             maybeWrapLogging(store), // TODO(note): there used to be a caching layer here but we won't have one for versioned tables

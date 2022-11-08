@@ -2,9 +2,7 @@ package org.apache.kafka.streams.state.internals;
 
 import java.util.List;
 import org.apache.kafka.common.serialization.Serializer;
-import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
-import org.apache.kafka.streams.KeyValueTimestamp;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.StateStoreContext;
@@ -34,7 +32,7 @@ class VersionedKeyValueStoreAdaptor<K, V> implements VersionedKeyValueStoreInter
 
     @Override
     public ValueAndTimestamp<V> putIfAbsent(K key, ValueAndTimestamp<V> valueAndTimestamp) {
-        return inner.putIfAbsent(key, valueAndTimestamp.value(), valueAndTimestamp.timestamp());;
+        return inner.putIfAbsent(key, valueAndTimestamp.value(), valueAndTimestamp.timestamp());
     }
 
     @Override
