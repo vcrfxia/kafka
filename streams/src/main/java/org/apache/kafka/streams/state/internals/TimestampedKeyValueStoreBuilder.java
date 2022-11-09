@@ -39,6 +39,7 @@ import org.apache.kafka.streams.state.ValueAndTimestamp;
 import java.util.List;
 import java.util.Objects;
 import org.apache.kafka.streams.state.VersionedBytesStore;
+import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
 import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 
 public class TimestampedKeyValueStoreBuilder<K, V>
@@ -92,7 +93,16 @@ public class TimestampedKeyValueStoreBuilder<K, V>
         }
     }
 
-    // TODO: need to expose history retention for use from InternalTopologyBuilder
+    public boolean isVersionedStoreBuilder() {
+        return storeSupplier instanceof VersionedBytesStoreSupplier;
+    }
+
+    public long historyRetentionMs() {
+        if (!(storeSupplier instanceof VersionedBytesStoreSupplier)) {
+            throw new IllegalStateException("cannot get history retention for non-versioned store");
+        }
+        return ((VersionedBytesStoreSupplier) storeSupplier).historyRetentionMs();
+    }
 
     private KeyValueStore<Bytes, byte[]> maybeWrapCaching(final KeyValueStore<Bytes, byte[]> inner) {
         if (!enableCaching) {

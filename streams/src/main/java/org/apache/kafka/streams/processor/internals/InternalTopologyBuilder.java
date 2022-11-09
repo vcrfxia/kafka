@@ -35,8 +35,8 @@ import org.apache.kafka.streams.processor.internals.namedtopology.NamedTopology;
 import org.apache.kafka.streams.TopologyConfig;
 import org.apache.kafka.streams.state.StoreBuilder;
 import org.apache.kafka.streams.state.internals.SessionStoreBuilder;
+import org.apache.kafka.streams.state.internals.TimestampedKeyValueStoreBuilder;
 import org.apache.kafka.streams.state.internals.TimestampedWindowStoreBuilder;
-import org.apache.kafka.streams.state.internals.VersionedKeyValueStoreBuilder;
 import org.apache.kafka.streams.state.internals.WindowStoreBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -184,7 +184,7 @@ public class InternalTopologyBuilder {
 
         long historyRetention() {
             if (isVersionedStore()) {
-                return 0L; // TODO: how to get history retention from builder?
+                return ((TimestampedKeyValueStoreBuilder<?, ?>) builder).historyRetentionMs();
             } else {
                 throw new IllegalStateException("historyRetention is not supported when not a versioned store");
             }
@@ -209,7 +209,8 @@ public class InternalTopologyBuilder {
         }
 
         private boolean isVersionedStore() {
-            return false; // TODO: how to tell that store is versioned from the builder?
+            return builder instanceof TimestampedKeyValueStoreBuilder
+                && ((TimestampedKeyValueStoreBuilder<?, ?>) builder).isVersionedStoreBuilder();
         }
 
         // Apparently Java strips the generics from this method because we're using the raw type for builder,
