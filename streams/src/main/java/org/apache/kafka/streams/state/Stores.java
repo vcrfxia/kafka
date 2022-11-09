@@ -26,10 +26,12 @@ import org.apache.kafka.streams.state.internals.KeyValueStoreBuilder;
 import org.apache.kafka.streams.state.internals.MemoryNavigableLRUCache;
 import org.apache.kafka.streams.state.internals.RocksDbKeyValueBytesStoreSupplier;
 import org.apache.kafka.streams.state.internals.RocksDbSessionBytesStoreSupplier;
+import org.apache.kafka.streams.state.internals.RocksDbVersionedKeyValueBytesStoreSupplier;
 import org.apache.kafka.streams.state.internals.RocksDbWindowBytesStoreSupplier;
 import org.apache.kafka.streams.state.internals.SessionStoreBuilder;
 import org.apache.kafka.streams.state.internals.TimestampedKeyValueStoreBuilder;
 import org.apache.kafka.streams.state.internals.TimestampedWindowStoreBuilder;
+import org.apache.kafka.streams.state.internals.VersionedBytesStoreAdaptor;
 import org.apache.kafka.streams.state.internals.WindowStoreBuilder;
 
 import java.time.Duration;
@@ -108,6 +110,27 @@ public final class Stores {
     public static KeyValueBytesStoreSupplier persistentTimestampedKeyValueStore(final String name) {
         Objects.requireNonNull(name, "name cannot be null");
         return new RocksDbKeyValueBytesStoreSupplier(name, true);
+    }
+
+    public static VersionedBytesStoreSupplier persistentVersionedKeyValueStore(final String name,
+                                                                              final Duration historyRetention,
+                                                                              final Duration segmentInterval) {
+        Objects.requireNonNull(name, "name cannot be null");
+        final String rpMsgPrefix = prepareMillisCheckFailMsgPrefix(historyRetention, "historyRetention");
+        final long retentionMs = validateMillisecondDuration(historyRetention, rpMsgPrefix);
+        if (retentionMs < 0L) {
+            throw new IllegalArgumentException("historyRetention cannot be negative");
+        }
+        final String siMsgPrefix = prepareMillisCheckFailMsgPrefix(segmentInterval, "segmentInterval");
+        final long segmentIntervalMs = validateMillisecondDuration(segmentInterval, siMsgPrefix);
+        if (segmentIntervalMs < 0L) {
+            throw new IllegalArgumentException("segmentInterval cannot be negative");
+        }
+        return new RocksDbVersionedKeyValueBytesStoreSupplier(name, retentionMs, segmentIntervalMs);
+    }
+
+    public static VersionedBytesStore kvStoreFromVersionedStore(final VersionedKeyValueStore<Bytes, byte[]> store) {
+        return new VersionedBytesStoreAdaptor(store);
     }
 
     /**

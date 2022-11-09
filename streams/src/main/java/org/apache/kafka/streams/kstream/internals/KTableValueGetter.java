@@ -25,5 +25,9 @@ public interface KTableValueGetter<K, V> {
 
     ValueAndTimestamp<V> get(K key);
 
+    default ValueAndTimestamp<V> get(K key, long timestampTo) {
+        return get(key);
+    }
+
     default void close() {}
 }

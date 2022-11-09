@@ -30,8 +30,11 @@ public final class ValueAndTimestamp<V> {
     private final long timestamp;
 
     private ValueAndTimestamp(final V value,
-                              final long timestamp) {
-        Objects.requireNonNull(value);
+                              final long timestamp,
+                              final boolean allowNullValue) {
+        if (!allowNullValue) {
+            Objects.requireNonNull(value);
+        }
         this.value = value;
         this.timestamp = timestamp;
     }
@@ -47,7 +50,12 @@ public final class ValueAndTimestamp<V> {
      */
     public static <V> ValueAndTimestamp<V> make(final V value,
                                                 final long timestamp) {
-        return value == null ? null : new ValueAndTimestamp<>(value, timestamp);
+        return value == null ? null : new ValueAndTimestamp<>(value, timestamp, false);
+    }
+
+    public static <V> ValueAndTimestamp<V> makeAllowNullable(
+        final V value, final long timestamp) {
+        return new ValueAndTimestamp<>(value, timestamp, true);
     }
 
     /**

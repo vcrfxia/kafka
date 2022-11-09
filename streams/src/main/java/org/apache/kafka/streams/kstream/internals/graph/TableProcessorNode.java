@@ -27,19 +27,19 @@ import java.util.Objects;
 public class TableProcessorNode<K, V> extends GraphNode {
 
     private final ProcessorParameters<K, V, ?, ?> processorParameters;
-    private final StoreBuilder<TimestampedKeyValueStore<K, V>> storeBuilder;
+    private final StoreBuilder<? extends TimestampedKeyValueStore<K, V>> storeBuilder;
     private final String[] storeNames;
 
     public TableProcessorNode(final String nodeName,
                               final ProcessorParameters<K, V, ?, ?> processorParameters,
-                              final StoreBuilder<TimestampedKeyValueStore<K, V>> storeBuilder) {
+                              final StoreBuilder<? extends TimestampedKeyValueStore<K, V>> storeBuilder) {
         this(nodeName, processorParameters, storeBuilder, null);
     }
 
     public TableProcessorNode(final String nodeName,
                               final ProcessorParameters<K, V, ?, ?> processorParameters,
                               // TODO KIP-300: we are enforcing this as a keyvalue store, but it should go beyond any type of stores
-                              final StoreBuilder<TimestampedKeyValueStore<K, V>> storeBuilder,
+                              final StoreBuilder<? extends TimestampedKeyValueStore<K, V>> storeBuilder,
                               final String[] storeNames) {
         super(nodeName);
         this.processorParameters = processorParameters;

@@ -38,11 +38,14 @@ import org.apache.kafka.streams.state.ValueAndTimestamp;
 
 import java.util.List;
 import java.util.Objects;
+import org.apache.kafka.streams.state.VersionedBytesStore;
+import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 
 public class TimestampedKeyValueStoreBuilder<K, V>
     extends AbstractStoreBuilder<K, ValueAndTimestamp<V>, TimestampedKeyValueStore<K, V>> {
 
     private final KeyValueBytesStoreSupplier storeSupplier;
+    private final Serde<V> innerValueSerde;
 
     public TimestampedKeyValueStoreBuilder(final KeyValueBytesStoreSupplier storeSupplier,
                                            final Serde<K> keySerde,
@@ -55,6 +58,7 @@ public class TimestampedKeyValueStoreBuilder<K, V>
             time);
         Objects.requireNonNull(storeSupplier, "storeSupplier can't be null");
         Objects.requireNonNull(storeSupplier.metricsScope(), "storeSupplier's metricsScope can't be null");
+        this.innerValueSerde = valueSerde;
         this.storeSupplier = storeSupplier;
     }
 
@@ -68,13 +72,27 @@ public class TimestampedKeyValueStoreBuilder<K, V>
                 store = new InMemoryTimestampedKeyValueStoreMarker(store);
             }
         }
-        return new MeteredTimestampedKeyValueStore<>(
-            maybeWrapCaching(maybeWrapLogging(store)),
-            storeSupplier.metricsScope(),
-            time,
-            keySerde,
-            valueSerde);
+
+        if (store instanceof VersionedBytesStore) {
+            final VersionedKeyValueStoreInternal<Bytes, byte[]> versionedStore =
+                new VersionedKeyValueStoreAdaptor((VersionedBytesStore) store);
+            return new MeteredTimeAwareKeyValueStore<>(
+                maybeWrapLogging(versionedStore), // no caching layer for versioned stores
+                storeSupplier.metricsScope(),
+                time,
+                keySerde,
+                innerValueSerde);
+        } else {
+            return new MeteredTimestampedKeyValueStore<>(
+                maybeWrapCaching(maybeWrapLogging(store)),
+                storeSupplier.metricsScope(),
+                time,
+                keySerde,
+                valueSerde);
+        }
     }
+
+    // TODO: need to expose history retention for use from InternalTopologyBuilder
 
     private KeyValueStore<Bytes, byte[]> maybeWrapCaching(final KeyValueStore<Bytes, byte[]> inner) {
         if (!enableCaching) {
@@ -88,6 +106,13 @@ public class TimestampedKeyValueStoreBuilder<K, V>
             return inner;
         }
         return new ChangeLoggingTimestampedKeyValueBytesStore(inner);
+    }
+
+    private VersionedKeyValueStoreInternal<Bytes, byte[]> maybeWrapLogging(final VersionedKeyValueStoreInternal<Bytes, byte[]> inner) {
+        if (!enableLogging) {
+            return inner;
+        }
+        return new ChangeLoggingTimeAwareKeyValueBytesStore<>(inner);
     }
 
     private final static class InMemoryTimestampedKeyValueStoreMarker

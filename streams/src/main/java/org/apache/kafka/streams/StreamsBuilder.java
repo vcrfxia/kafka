@@ -47,6 +47,7 @@ import java.util.Collections;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.regex.Pattern;
+import org.apache.kafka.streams.state.VersionedKeyValueStore;
 
 /**
  * {@code StreamsBuilder} provide the high-level Kafka Streams DSL to specify a Kafka Streams topology.
@@ -255,16 +256,16 @@ public class StreamsBuilder {
      * @param materialized       the instance of {@link Materialized} used to materialize a state store; cannot be {@code null}
      * @return a {@link KTable} for the specified topic
      */
-    public synchronized <K, V> KTable<K, V> table(final String topic,
+    public synchronized <K, V, S extends KeyValueStore<Bytes, byte[]>> KTable<K, V> table(final String topic,
                                                   final Consumed<K, V> consumed,
-                                                  final Materialized<K, V, KeyValueStore<Bytes, byte[]>> materialized) {
+                                                  final Materialized<K, V, S> materialized) {
         Objects.requireNonNull(topic, "topic can't be null");
         Objects.requireNonNull(consumed, "consumed can't be null");
         Objects.requireNonNull(materialized, "materialized can't be null");
         final ConsumedInternal<K, V> consumedInternal = new ConsumedInternal<>(consumed);
         materialized.withKeySerde(consumedInternal.keySerde()).withValueSerde(consumedInternal.valueSerde());
 
-        final MaterializedInternal<K, V, KeyValueStore<Bytes, byte[]>> materializedInternal =
+        final MaterializedInternal<K, V, S> materializedInternal =
             new MaterializedInternal<>(materialized, internalStreamsBuilder, topic + "-");
 
         return internalStreamsBuilder.table(topic, consumedInternal, materializedInternal);
@@ -344,12 +345,12 @@ public class StreamsBuilder {
      * @param materialized  the instance of {@link Materialized} used to materialize a state store; cannot be {@code null}
      * @return a {@link KTable} for the specified topic
      */
-    public synchronized <K, V> KTable<K, V> table(final String topic,
-                                                  final Materialized<K, V, KeyValueStore<Bytes, byte[]>> materialized) {
+    public synchronized <K, V, S extends KeyValueStore<Bytes, byte[]>> KTable<K, V> table(final String topic,
+                                                  final Materialized<K, V, S> materialized) {
         Objects.requireNonNull(topic, "topic can't be null");
         Objects.requireNonNull(materialized, "materialized can't be null");
 
-        final MaterializedInternal<K, V, KeyValueStore<Bytes, byte[]>> materializedInternal =
+        final MaterializedInternal<K, V, S> materializedInternal =
             new MaterializedInternal<>(materialized, internalStreamsBuilder, topic + "-");
 
         final ConsumedInternal<K, V> consumedInternal =
