@@ -28,6 +28,7 @@ import org.apache.kafka.streams.state.SessionStore;
 import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 import org.apache.kafka.streams.state.TimestampedWindowStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 import org.apache.kafka.streams.state.WindowStore;
 import org.apache.kafka.streams.state.WindowStoreIterator;
 import org.apache.kafka.streams.state.internals.WrappedStateStore;
@@ -60,7 +61,9 @@ abstract class AbstractReadWriteDecorator<T extends StateStore, K, V> extends Wr
     }
 
     static StateStore getReadWriteStore(final StateStore store) {
-        if (store instanceof TimestampedKeyValueStore) {
+        if (store instanceof VersionedKeyValueStoreInternal) {
+            return new VersionedKeyValueStoreReadWriteDecorator<>((VersionedKeyValueStoreInternal<?, ?>) store);
+        } else if (store instanceof TimestampedKeyValueStore) {
             return new TimestampedKeyValueStoreReadWriteDecorator<>((TimestampedKeyValueStore<?, ?>) store);
         } else if (store instanceof KeyValueStore) {
             return new KeyValueStoreReadWriteDecorator<>((KeyValueStore<?, ?>) store);
@@ -75,11 +78,11 @@ abstract class AbstractReadWriteDecorator<T extends StateStore, K, V> extends Wr
         }
     }
 
-    static class KeyValueStoreReadWriteDecorator<K, V>
-        extends AbstractReadWriteDecorator<KeyValueStore<K, V>, K, V>
+    static class KeyValueStoreReadWriteDecorator<T extends KeyValueStore<K, V>, K, V>
+        extends AbstractReadWriteDecorator<T, K, V>
         implements KeyValueStore<K, V> {
 
-        KeyValueStoreReadWriteDecorator(final KeyValueStore<K, V> inner) {
+        KeyValueStoreReadWriteDecorator(final T inner) {
             super(inner);
         }
 
@@ -145,11 +148,47 @@ abstract class AbstractReadWriteDecorator<T extends StateStore, K, V> extends Wr
     }
 
     static class TimestampedKeyValueStoreReadWriteDecorator<K, V>
-        extends KeyValueStoreReadWriteDecorator<K, ValueAndTimestamp<V>>
+        extends KeyValueStoreReadWriteDecorator<TimestampedKeyValueStore<K, V>, K, ValueAndTimestamp<V>>
         implements TimestampedKeyValueStore<K, V> {
 
         TimestampedKeyValueStoreReadWriteDecorator(final TimestampedKeyValueStore<K, V> inner) {
             super(inner);
+        }
+    }
+
+    static class VersionedKeyValueStoreReadWriteDecorator<K, V>
+        extends KeyValueStoreReadWriteDecorator<VersionedKeyValueStoreInternal<K, V>, K, ValueAndTimestamp<V>>
+        implements VersionedKeyValueStoreInternal<K, V> {
+
+        VersionedKeyValueStoreReadWriteDecorator(final VersionedKeyValueStoreInternal<K, V> inner) {
+            super(inner);
+        }
+
+        @Override
+        public ValueAndTimestamp<V> get(final K key, final long timestampTo) {
+            return wrapped().get(key, timestampTo);
+        }
+
+        @Override
+        public KeyValueIterator<K, ValueAndTimestamp<V>> range(final K from,
+                                            final K to, final long timestampTo) {
+            return wrapped().range(from, to, timestampTo);
+        }
+
+        @Override
+        public KeyValueIterator<K, ValueAndTimestamp<V>> reverseRange(final K from,
+                                                   final K to, final long timestampTo) {
+            return wrapped().reverseRange(from, to, timestampTo);
+        }
+
+        @Override
+        public KeyValueIterator<K, ValueAndTimestamp<V>> all(final long timestampTo) {
+            return wrapped().all(timestampTo);
+        }
+
+        @Override
+        public KeyValueIterator<K, ValueAndTimestamp<V>> reverseAll(final long timestampTo) {
+            return wrapped().reverseAll(timestampTo);
         }
     }
 

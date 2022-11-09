@@ -1,0 +1,7 @@
+	ts = 111300, key = k, value = v0
+	ts = 107700, key = k, value = null
+	ts = 31800, key = k, value = v4
+	ts = 165000, key = k, value = null
+	ts = 227100, key = k, value = null
+	ts = 89100, key = k, value = null
+	ts = 159600, key = k, value = v12
