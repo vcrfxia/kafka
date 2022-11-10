@@ -119,9 +119,9 @@ public class InternalStreamsBuilder implements InternalNameProvider {
                                  this);
     }
 
-    public <K, V> KTable<K, V> table(final String topic,
+    public <K, V, S extends KeyValueStore<Bytes, byte[]>> KTable<K, V> table(final String topic,
                                      final ConsumedInternal<K, V> consumed,
-                                     final MaterializedInternal<K, V, KeyValueStore<Bytes, byte[]>> materialized) {
+                                     final MaterializedInternal<K, V, S> materialized) {
 
         final NamedInternal named = new NamedInternal(consumed.name());
 
