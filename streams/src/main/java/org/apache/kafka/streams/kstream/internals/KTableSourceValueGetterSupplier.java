@@ -53,8 +53,7 @@ public class KTableSourceValueGetterSupplier<K, V> implements KTableValueGetterS
             if (store instanceof VersionedKeyValueStoreInternal) {
                 return ((VersionedKeyValueStoreInternal<K, V>) store).get(key, timestampTo);
             } else {
-                throw new UnsupportedOperationException(
-                    "Cannot call timestamped get() on non-versioned store.");
+                return get(key);
             }
         }
     }

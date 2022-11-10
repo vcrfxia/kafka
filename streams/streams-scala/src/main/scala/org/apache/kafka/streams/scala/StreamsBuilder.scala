@@ -120,10 +120,10 @@ class StreamsBuilder(inner: StreamsBuilderJ = new StreamsBuilderJ) {
    * @see #table(String)
    * @see `org.apache.kafka.streams.StreamsBuilder#table`
    */
-  def table[K, V](topic: String, materialized: Materialized[K, V, ByteArrayKeyValueStore])(implicit
+  def table[K, V, S <: ByteArrayKeyValueStore](topic: String, materialized: Materialized[K, V, S])(implicit
     consumed: Consumed[K, V]
   ): KTable[K, V] =
-    new KTable(inner.table[K, V](topic, consumed, materialized))
+    new KTable(inner.table[K, V, S](topic, consumed, materialized))
 
   /**
    * Create a `GlobalKTable` from the specified topic. The serializers from the implicit `Consumed`

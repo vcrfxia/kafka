@@ -16,10 +16,13 @@
  */
 package org.apache.kafka.streams.integration;
 
+import java.time.Duration;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
+import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.test.TestRecord;
 import org.apache.kafka.test.IntegrationTest;
 import org.junit.Before;
@@ -56,7 +59,8 @@ public class StreamTableJoinIntegrationTest extends AbstractJoinIntegrationTest 
         appID = "stream-table-join-integration-test";
 
         builder = new StreamsBuilder();
-        rightTable = builder.table(INPUT_TOPIC_RIGHT);
+//        rightTable = builder.table(INPUT_TOPIC_RIGHT);
+        rightTable = builder.table(INPUT_TOPIC_RIGHT, Materialized.as(Stores.persistentVersionedKeyValueStore("versionedstore", Duration.ofMillis(1000), Duration.ofMillis(100))));
         leftStream = builder.stream(INPUT_TOPIC_LEFT);
     }
 
