@@ -12,24 +12,21 @@ final class VersionedBytesStoreValueFormatter {
 
     static byte[] rawValue(final byte[] rawValueAndTimestamp) {
         final int rawValueLength = rawValueAndTimestamp.length - 16;
-        return ByteBuffer
-            .allocate(rawValueLength)
-            .put(rawValueAndTimestamp, 16, rawValueLength)
-            .array();
+        final byte[] value = new byte[rawValueLength];
+        System.arraycopy(rawValueAndTimestamp, 16, value, 0, rawValueLength);
+        return value;
     }
 
     static long timestamp(final byte[] rawValueAndTimestamp) {
         return ByteBuffer
-            .allocate(8)
-            .put(rawValueAndTimestamp, 0, 8)
-            .getLong();
+            .wrap(rawValueAndTimestamp)
+            .getLong(0);
     }
 
     static boolean isTombstone(final byte[] rawValueAndTimestamp) {
         final long tombstoneIndicator = ByteBuffer
-            .allocate(8)
-            .put(rawValueAndTimestamp, 8, 8)
-            .getLong();
+            .wrap(rawValueAndTimestamp)
+            .getLong(8);
         return tombstoneIndicator == 1;
     }
 

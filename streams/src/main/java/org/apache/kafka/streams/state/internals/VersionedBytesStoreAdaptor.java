@@ -74,34 +74,38 @@ public class VersionedBytesStoreAdaptor implements VersionedBytesStore {
 
     @Override
     public String name() {
-        return null;
+        return inner.name();
     }
 
     @Deprecated
     @Override
     public void init(ProcessorContext context, StateStore root) {
+        inner.init(context, root);
     }
 
     @Override
     public void init(StateStoreContext context, StateStore root) {
+        inner.init(context, root);
     }
 
     @Override
     public void flush() {
+        inner.flush();
     }
 
     @Override
     public void close() {
+        inner.close();
     }
 
     @Override
     public boolean persistent() {
-        return false;
+        return inner.persistent();
     }
 
     @Override
     public boolean isOpen() {
-        return false;
+        return inner.persistent();
     }
 
     @Override
