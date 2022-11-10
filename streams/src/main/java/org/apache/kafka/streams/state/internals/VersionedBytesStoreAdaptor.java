@@ -77,6 +77,7 @@ public class VersionedBytesStoreAdaptor implements VersionedBytesStore {
         return null;
     }
 
+    @Deprecated
     @Override
     public void init(ProcessorContext context, StateStore root) {
     }

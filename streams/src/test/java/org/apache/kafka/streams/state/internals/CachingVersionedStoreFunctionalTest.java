@@ -61,10 +61,10 @@ public class CachingVersionedStoreFunctionalTest {
         context = (InternalMockProcessorContext) driver.context();
         context.setTime(BASE_TIMESTAMP); // TODO: ?
 
-        store = new VersionedKeyValueStoreBuilder<>(
-            (RocksDbVersionedKeyValueBytesStoreSupplier) Stores.persistentVersionedKeyValueStore(STORE_NAME, Duration.ofMillis(HISTORY_RETENTION), Duration.ofMillis(SEGMENT_INTERVAL)),
+        store = (VersionedKeyValueStoreInternal<String, String>) new TimestampedKeyValueStoreBuilder<>(
+            Stores.persistentVersionedKeyValueStore(STORE_NAME, Duration.ofMillis(HISTORY_RETENTION), Duration.ofMillis(SEGMENT_INTERVAL)),
             stringSerde, stringSerde, time)
-            .withCachingEnabled()
+            .withCachingEnabled() // TODO: this is a no-op for the versioned store
             .build();
         store.init((StateStoreContext) context, store);
     }

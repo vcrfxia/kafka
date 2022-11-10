@@ -380,17 +380,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         // register and possibly restore the state from the logs
         stateStoreContext.register(
             root,
-            new RecordBatchingStateRestoreCallback() {
-                @Override
-                public void restoreBatch(Collection<ConsumerRecord<byte[], byte[]>> records) {
-                    RocksDBVersionedStore.this.restoreBatch(records);
-                }
-
-                @Override
-                public void finishRestore() {
-                    RocksDBVersionedStore.this.finishRestore();
-                }
-            },
+            (RecordBatchingStateRestoreCallback) RocksDBVersionedStore.this::restoreBatch,
             () -> StoreQueryUtils.checkpointPosition(positionCheckpoint, position)
         );
 

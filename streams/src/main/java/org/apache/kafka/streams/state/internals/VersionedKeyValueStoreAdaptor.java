@@ -102,6 +102,7 @@ class VersionedKeyValueStoreAdaptor implements VersionedKeyValueStoreInternal<By
         return null;
     }
 
+    @Deprecated
     @Override
     public void init(ProcessorContext context, StateStore root) {
 

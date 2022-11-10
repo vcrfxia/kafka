@@ -18,6 +18,19 @@ public class KeyValueTimestamp<K, V> {
         return new KeyValueTimestamp<>(key, value, timestamp);
     }
 
+    // accessors included only for backwards compatibility with existing test class
+    public K key() {
+        return key;
+    }
+
+    public V value() {
+        return value;
+    }
+
+    public long timestamp() {
+        return timestamp;
+    }
+
     @Override
     public String toString() {
         return "KeyValueTimestamp(" + key + ", " + value + ", " + timestamp + ")";

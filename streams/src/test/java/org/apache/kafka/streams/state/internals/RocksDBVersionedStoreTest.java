@@ -700,7 +700,8 @@ public class RocksDBVersionedStoreTest {
     private void putStore(final String key, final String value, final long timestamp) {
         store.put(
             new Bytes(getSerializedKey(key)),
-            ValueAndTimestamp.makeAllowNullable(getSerializedValue(value), timestamp)
+            getSerializedValue(value),
+            timestamp
         );
     }
 
