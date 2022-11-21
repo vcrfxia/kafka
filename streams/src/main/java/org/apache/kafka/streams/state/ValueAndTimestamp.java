@@ -53,6 +53,14 @@ public final class ValueAndTimestamp<V> {
         return value == null ? null : new ValueAndTimestamp<>(value, timestamp, false);
     }
 
+    /**
+     * Create a new {@link ValueAndTimestamp} instance. The provided {@code value} may be {@code null}.
+     *
+     * @param value      the value
+     * @param timestamp  the timestamp
+     * @param <V> the type of the value
+     * @return a new {@link ValueAndTimestamp} instance
+     */
     public static <V> ValueAndTimestamp<V> makeAllowNullable(
         final V value, final long timestamp) {
         return new ValueAndTimestamp<>(value, timestamp, true);

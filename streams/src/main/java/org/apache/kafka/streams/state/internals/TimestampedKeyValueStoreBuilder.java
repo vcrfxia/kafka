@@ -74,9 +74,12 @@ public class TimestampedKeyValueStoreBuilder<K, V>
             }
         }
 
-        if (store instanceof VersionedBytesStore) {
+        if (isVersionedStoreBuilder()) {
+            if (!(store instanceof VersionedBytesStore)) {
+                throw new IllegalStateException("VersionedBytesStoreSupplier.get() must return an instance of VersionedBytesStore");
+            }
             final VersionedKeyValueStoreInternal<Bytes, byte[]> versionedStore =
-                new VersionedKeyValueStoreAdaptor((VersionedBytesStore) store);
+                new VersionedKeyValueStoreInternalAdaptor((VersionedBytesStore) store);
             return new MeteredTimeAwareKeyValueStore<>(
                 maybeWrapLogging(versionedStore), // no caching layer for versioned stores
                 storeSupplier.metricsScope(),

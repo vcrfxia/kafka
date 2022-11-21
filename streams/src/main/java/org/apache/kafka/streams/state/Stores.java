@@ -31,7 +31,7 @@ import org.apache.kafka.streams.state.internals.RocksDbWindowBytesStoreSupplier;
 import org.apache.kafka.streams.state.internals.SessionStoreBuilder;
 import org.apache.kafka.streams.state.internals.TimestampedKeyValueStoreBuilder;
 import org.apache.kafka.streams.state.internals.TimestampedWindowStoreBuilder;
-import org.apache.kafka.streams.state.internals.VersionedBytesStoreAdaptor;
+import org.apache.kafka.streams.state.internals.VersionedKeyValueStoreBuilder;
 import org.apache.kafka.streams.state.internals.WindowStoreBuilder;
 
 import java.time.Duration;
@@ -112,6 +112,27 @@ public final class Stores {
         return new RocksDbKeyValueBytesStoreSupplier(name, true);
     }
 
+    /**
+     * Create a persistent versioned key-value store {@link VersionedBytesStoreSupplier}.
+     * <p>
+     * This store supplier can be passed into a
+     * {@link #versionedKeyValueStoreBuilder(VersionedBytesStoreSupplier, Serde, Serde)}.
+     *
+     * @param name             name of the store (cannot be {@code null})
+     * @param historyRetention length of time that old record versions are available for query
+     *                         (cannot be negative). If a timestamp bound provided to
+     *                         {@link VersionedKeyValueStore#get(Object, long)} is older than this
+     *                         specified history retention, then the get operation will not return data.
+     * @param segmentInterval  size of segments for storing old record versions (must be positive). Old record versions
+     *                         for the same key in a single segment are stored (updated and accessed) together.
+     *                         The only impact of this parameter is performance. If segments are large
+     *                         and a workload results in many record versions for the same key being collected
+     *                         in a single segment, performance may degrade as a result. On the other hand,
+     *                         reads and out-of-order writes which access older segments may slow down if
+     *                         there are too many segments.
+     * @return an instance of {@link VersionedBytesStoreSupplier}
+     * @throws IllegalArgumentException if {@code historyRetention} or {@code segmentInterval} can't be represented as {code long milliseconds}
+     */
     public static VersionedBytesStoreSupplier persistentVersionedKeyValueStore(final String name,
                                                                               final Duration historyRetention,
                                                                               final Duration segmentInterval) {
@@ -127,10 +148,6 @@ public final class Stores {
             throw new IllegalArgumentException("segmentInterval cannot be negative");
         }
         return new RocksDbVersionedKeyValueBytesStoreSupplier(name, retentionMs, segmentIntervalMs);
-    }
-
-    public static VersionedBytesStore kvStoreFromVersionedStore(final VersionedKeyValueStore<Bytes, byte[]> store) {
-        return new VersionedBytesStoreAdaptor(store);
     }
 
     /**
@@ -409,6 +426,24 @@ public final class Stores {
                                                                                                       final Serde<V> valueSerde) {
         Objects.requireNonNull(supplier, "supplier cannot be null");
         return new TimestampedKeyValueStoreBuilder<>(supplier, keySerde, valueSerde, Time.SYSTEM);
+    }
+
+    /**
+     * Creates a {@link StoreBuilder} that can be used to build a {@link VersionedKeyValueStore}.
+     *
+     * @param supplier   a {@link VersionedBytesStoreSupplier} (cannot be {@code null})
+     * @param keySerde   the key serde to use
+     * @param valueSerde the value serde to use; if the serialized bytes is {@code null} for put operations,
+     *                   it is treated as a deletion
+     * @param <K>        key type
+     * @param <V>        value type
+     * @return an instance of a {@link StoreBuilder} that can build a {@link VersionedKeyValueStore}
+     */
+    public static <K, V> StoreBuilder<VersionedKeyValueStore<K, V>> versionedKeyValueStoreBuilder(final VersionedBytesStoreSupplier supplier,
+                                                                                                  final Serde<K> keySerde,
+                                                                                                  final Serde<V> valueSerde) {
+        Objects.requireNonNull(supplier, "supplier cannot be null");
+        return new VersionedKeyValueStoreBuilder<>(supplier, keySerde, valueSerde, Time.SYSTEM);
     }
 
     /**
