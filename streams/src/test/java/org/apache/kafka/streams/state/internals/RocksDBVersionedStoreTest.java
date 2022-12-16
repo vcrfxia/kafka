@@ -29,7 +29,7 @@ import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.processor.StateStoreContext;
-import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.streams.state.VersionedRecord;
 import org.apache.kafka.streams.state.internals.VersionedStoreTestDataGeneratorUtil.DataRecord;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
 import org.apache.kafka.test.InternalMockProcessorContext;
@@ -104,7 +104,7 @@ public class RocksDBVersionedStoreTest {
         }
 
         for (Map.Entry<Long, DataRecord> testCase : testCases.entrySet()) {
-            final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
+            final VersionedRecord<String> observed = getFromStore(key, testCase.getKey());
             if (testCase.getValue().timestamp >= MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) {
                 // within history retention. validate results
                 if (testCase.getValue().value != null) {
@@ -143,7 +143,7 @@ public class RocksDBVersionedStoreTest {
             }
 
             for (Map.Entry<Long, DataRecord> testCase : testCases.entrySet()) {
-                final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
+                final VersionedRecord<String> observed = getFromStore(key, testCase.getKey());
                 if (testCase.getValue().timestamp >= MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) {
                     // within history retention. validate results
                     if (testCase.getValue().value != null) {
@@ -181,7 +181,7 @@ public class RocksDBVersionedStoreTest {
         store.finishRestore();
 
         for (Map.Entry<Long, DataRecord> testCase : testCases.entrySet()) {
-            final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
+            final VersionedRecord<String> observed = getFromStore(key, testCase.getKey());
             if (testCase.getValue().timestamp >= MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) {
                 // within history retention. validate results
                 if (testCase.getValue().value != null) {
@@ -218,7 +218,7 @@ public class RocksDBVersionedStoreTest {
             }
 
             for (Map.Entry<Long, DataRecord> testCase : testCases.entrySet()) {
-                final ValueAndTimestamp<String> observed = getFromStore(key, testCase.getKey());
+                final VersionedRecord<String> observed = getFromStore(key, testCase.getKey());
                 if (testCase.getValue().timestamp >= MAX_GENERATED_TIMESTAMP - HISTORY_RETENTION) {
                     // within history retention. validate results
                     if (testCase.getValue().value != null) {
@@ -244,19 +244,19 @@ public class RocksDBVersionedStoreTest {
         putStore("k", "v2", BASE_TIMESTAMP + 1);
         store.flush(); // ?
 
-        final ValueAndTimestamp<String> latest = getFromStore("k");
+        final VersionedRecord<String> latest = getFromStore("k");
         assertThat(latest.value(), equalTo("v2"));
         assertThat(latest.timestamp(), equalTo(BASE_TIMESTAMP + 1));
 
-        final ValueAndTimestamp<String> pastTimeFilter = getFromStore("k", BASE_TIMESTAMP);
+        final VersionedRecord<String> pastTimeFilter = getFromStore("k", BASE_TIMESTAMP);
         assertThat(pastTimeFilter.value(), equalTo("v"));
         assertThat(pastTimeFilter.timestamp(), equalTo(BASE_TIMESTAMP));
 
-        final ValueAndTimestamp<String> currentTimeFilter = getFromStore("k", BASE_TIMESTAMP + 1);
+        final VersionedRecord<String> currentTimeFilter = getFromStore("k", BASE_TIMESTAMP + 1);
         assertThat(currentTimeFilter.value(), equalTo("v2"));
         assertThat(currentTimeFilter.timestamp(), equalTo(BASE_TIMESTAMP + 1));
 
-        final ValueAndTimestamp<String> futureTimeFilter = getFromStore("k", BASE_TIMESTAMP + 2);
+        final VersionedRecord<String> futureTimeFilter = getFromStore("k", BASE_TIMESTAMP + 2);
         assertThat(futureTimeFilter.value(), equalTo("v2"));
         assertThat(futureTimeFilter.timestamp(), equalTo(BASE_TIMESTAMP + 1));
     }
@@ -267,16 +267,16 @@ public class RocksDBVersionedStoreTest {
         putStore("k", null, BASE_TIMESTAMP + 1);
         store.flush(); // ?
 
-        final ValueAndTimestamp<String> latest = getFromStore("k");
+        final VersionedRecord<String> latest = getFromStore("k");
         assertThat(latest, nullValue());
 
-        final ValueAndTimestamp<String> pastTimeFilter = getFromStore("k", BASE_TIMESTAMP);
+        final VersionedRecord<String> pastTimeFilter = getFromStore("k", BASE_TIMESTAMP);
         assertThat(pastTimeFilter, nullValue());
 
-        final ValueAndTimestamp<String> currentTimeFilter = getFromStore("k", BASE_TIMESTAMP + 1);
+        final VersionedRecord<String> currentTimeFilter = getFromStore("k", BASE_TIMESTAMP + 1);
         assertThat(currentTimeFilter, nullValue());
 
-        final ValueAndTimestamp<String> futureTimeFilter = getFromStore("k", BASE_TIMESTAMP + 2);
+        final VersionedRecord<String> futureTimeFilter = getFromStore("k", BASE_TIMESTAMP + 2);
         assertThat(futureTimeFilter, nullValue());
     }
 
@@ -288,23 +288,23 @@ public class RocksDBVersionedStoreTest {
         putStore("k", "v4", BASE_TIMESTAMP - 4);
         store.flush(); // ?
 
-        final ValueAndTimestamp<String> latest = getFromStore("k");
+        final VersionedRecord<String> latest = getFromStore("k");
         assertThat(latest.value(), equalTo("v"));
         assertThat(latest.timestamp(), equalTo(BASE_TIMESTAMP));
 
-        final ValueAndTimestamp<String> timeFilter = getFromStore("k", BASE_TIMESTAMP);
+        final VersionedRecord<String> timeFilter = getFromStore("k", BASE_TIMESTAMP);
         assertThat(timeFilter.value(), equalTo("v"));
         assertThat(timeFilter.timestamp(), equalTo(BASE_TIMESTAMP));
 
-        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", BASE_TIMESTAMP - 1);
+        final VersionedRecord<String> timeFilter1 = getFromStore("k", BASE_TIMESTAMP - 1);
         assertThat(timeFilter1.value(), equalTo("v1"));
         assertThat(timeFilter1.timestamp(), equalTo(BASE_TIMESTAMP - 1));
 
-        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", BASE_TIMESTAMP - 2);
+        final VersionedRecord<String> timeFilter2 = getFromStore("k", BASE_TIMESTAMP - 2);
         assertThat(timeFilter2.value(), equalTo("v2"));
         assertThat(timeFilter2.timestamp(), equalTo(BASE_TIMESTAMP - 2));
 
-        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", BASE_TIMESTAMP - 3);
+        final VersionedRecord<String> timeFilter3 = getFromStore("k", BASE_TIMESTAMP - 3);
         assertThat(timeFilter3.value(), equalTo("v4"));
         assertThat(timeFilter3.timestamp(), equalTo(BASE_TIMESTAMP - 4));
     }
@@ -317,21 +317,21 @@ public class RocksDBVersionedStoreTest {
         putStore("k", "v4", BASE_TIMESTAMP - 4);
         store.flush(); // ?
 
-        final ValueAndTimestamp<String> latest = getFromStore("k");
+        final VersionedRecord<String> latest = getFromStore("k");
         assertThat(latest, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter = getFromStore("k", BASE_TIMESTAMP);
+        final VersionedRecord<String> timeFilter = getFromStore("k", BASE_TIMESTAMP);
         assertThat(timeFilter, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", BASE_TIMESTAMP - 1);
+        final VersionedRecord<String> timeFilter1 = getFromStore("k", BASE_TIMESTAMP - 1);
         assertThat(timeFilter1.value(), equalTo("v1"));
         assertThat(timeFilter1.timestamp(), equalTo(BASE_TIMESTAMP - 1));
 
-        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", BASE_TIMESTAMP - 2);
+        final VersionedRecord<String> timeFilter2 = getFromStore("k", BASE_TIMESTAMP - 2);
         assertThat(timeFilter2.value(), equalTo("v2"));
         assertThat(timeFilter2.timestamp(), equalTo(BASE_TIMESTAMP - 2));
 
-        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", BASE_TIMESTAMP - 3);
+        final VersionedRecord<String> timeFilter3 = getFromStore("k", BASE_TIMESTAMP - 3);
         assertThat(timeFilter3.value(), equalTo("v4"));
         assertThat(timeFilter3.timestamp(), equalTo(BASE_TIMESTAMP - 4));
     }
@@ -347,31 +347,31 @@ public class RocksDBVersionedStoreTest {
         putStore("k", null, BASE_TIMESTAMP - 6);
         store.flush(); // ?
 
-        final ValueAndTimestamp<String> latest = getFromStore("k");
+        final VersionedRecord<String> latest = getFromStore("k");
         assertThat(latest.value(), equalTo("v"));
         assertThat(latest.timestamp(), equalTo(BASE_TIMESTAMP));
 
-        final ValueAndTimestamp<String> timeFilter = getFromStore("k", BASE_TIMESTAMP);
+        final VersionedRecord<String> timeFilter = getFromStore("k", BASE_TIMESTAMP);
         assertThat(timeFilter.value(), equalTo("v"));
         assertThat(timeFilter.timestamp(), equalTo(BASE_TIMESTAMP));
 
-        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", BASE_TIMESTAMP - 1);
+        final VersionedRecord<String> timeFilter1 = getFromStore("k", BASE_TIMESTAMP - 1);
         assertThat(timeFilter1, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", BASE_TIMESTAMP - 2);
+        final VersionedRecord<String> timeFilter2 = getFromStore("k", BASE_TIMESTAMP - 2);
         assertThat(timeFilter2, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", BASE_TIMESTAMP - 4);
+        final VersionedRecord<String> timeFilter4 = getFromStore("k", BASE_TIMESTAMP - 4);
         assertThat(timeFilter4, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter6 = getFromStore("k", BASE_TIMESTAMP - 6);
+        final VersionedRecord<String> timeFilter6 = getFromStore("k", BASE_TIMESTAMP - 6);
         assertThat(timeFilter6, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", BASE_TIMESTAMP - 3);
+        final VersionedRecord<String> timeFilter3 = getFromStore("k", BASE_TIMESTAMP - 3);
         assertThat(timeFilter3.value(), equalTo("v3"));
         assertThat(timeFilter3.timestamp(), equalTo(BASE_TIMESTAMP - 3));
 
-        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", BASE_TIMESTAMP - 5);
+        final VersionedRecord<String> timeFilter5 = getFromStore("k", BASE_TIMESTAMP - 5);
         assertThat(timeFilter5.value(), equalTo("v5"));
         assertThat(timeFilter5.timestamp(), equalTo(BASE_TIMESTAMP - 5));
     }
@@ -387,29 +387,29 @@ public class RocksDBVersionedStoreTest {
         putStore("k", null, BASE_TIMESTAMP - 6);
         store.flush(); // ?
 
-        final ValueAndTimestamp<String> latest = getFromStore("k");
+        final VersionedRecord<String> latest = getFromStore("k");
         assertThat(latest, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter = getFromStore("k", BASE_TIMESTAMP);
+        final VersionedRecord<String> timeFilter = getFromStore("k", BASE_TIMESTAMP);
         assertThat(timeFilter, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", BASE_TIMESTAMP - 1);
+        final VersionedRecord<String> timeFilter1 = getFromStore("k", BASE_TIMESTAMP - 1);
         assertThat(timeFilter1, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", BASE_TIMESTAMP - 2);
+        final VersionedRecord<String> timeFilter2 = getFromStore("k", BASE_TIMESTAMP - 2);
         assertThat(timeFilter2, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", BASE_TIMESTAMP - 4);
+        final VersionedRecord<String> timeFilter4 = getFromStore("k", BASE_TIMESTAMP - 4);
         assertThat(timeFilter4, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter6 = getFromStore("k", BASE_TIMESTAMP - 6);
+        final VersionedRecord<String> timeFilter6 = getFromStore("k", BASE_TIMESTAMP - 6);
         assertThat(timeFilter6, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", BASE_TIMESTAMP - 3);
+        final VersionedRecord<String> timeFilter3 = getFromStore("k", BASE_TIMESTAMP - 3);
         assertThat(timeFilter3.value(), equalTo("v3"));
         assertThat(timeFilter3.timestamp(), equalTo(BASE_TIMESTAMP - 3));
 
-        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", BASE_TIMESTAMP - 5);
+        final VersionedRecord<String> timeFilter5 = getFromStore("k", BASE_TIMESTAMP - 5);
         assertThat(timeFilter5.value(), equalTo("v5"));
         assertThat(timeFilter5.timestamp(), equalTo(BASE_TIMESTAMP - 5));
     }
@@ -419,10 +419,10 @@ public class RocksDBVersionedStoreTest {
         putStore("k", "to_be_replaced", BASE_TIMESTAMP);
         putStore("k", "b", BASE_TIMESTAMP);
 
-        ValueAndTimestamp<String> latest = getFromStore("k");
+        VersionedRecord<String> latest = getFromStore("k");
         assertThat(latest.value(), equalTo("b"));
         assertThat(latest.timestamp(), equalTo(BASE_TIMESTAMP));
-        ValueAndTimestamp<String> timeFilter = getFromStore("k", BASE_TIMESTAMP);
+        VersionedRecord<String> timeFilter = getFromStore("k", BASE_TIMESTAMP);
         assertThat(timeFilter.value(), equalTo("b"));
         assertThat(timeFilter.timestamp(), equalTo(BASE_TIMESTAMP));
 
@@ -594,98 +594,98 @@ public class RocksDBVersionedStoreTest {
 
     // TODO: extract inputs for these shared sets into shared code as well? (slightly annoying for the repeat tests)
     private void verifySet2() {
-        final ValueAndTimestamp<String> latest = getFromStore("k");
+        final VersionedRecord<String> latest = getFromStore("k");
         assertThat(latest, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
+        final VersionedRecord<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
         assertThat(timeFilter, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
+        final VersionedRecord<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
         assertThat(timeFilter1.value(), equalTo("vp10"));
         assertThat(timeFilter1.timestamp(), equalTo(SEGMENT_INTERVAL + 10));
 
-        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 5);
+        final VersionedRecord<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 5);
         assertThat(timeFilter2, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL + 2);
+        final VersionedRecord<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL + 2);
         assertThat(timeFilter3, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL);
+        final VersionedRecord<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL);
         assertThat(timeFilter4, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 1);
+        final VersionedRecord<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 1);
         assertThat(timeFilter5, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter6 = getFromStore("k", SEGMENT_INTERVAL - 5);
+        final VersionedRecord<String> timeFilter6 = getFromStore("k", SEGMENT_INTERVAL - 5);
         assertThat(timeFilter6.value(), equalTo("vn10"));
         assertThat(timeFilter6.timestamp(), equalTo(SEGMENT_INTERVAL - 10));
 
-        final ValueAndTimestamp<String> timeFilter7 = getFromStore("k", SEGMENT_INTERVAL - 15);
+        final VersionedRecord<String> timeFilter7 = getFromStore("k", SEGMENT_INTERVAL - 15);
         assertThat(timeFilter7, nullValue());
     }
 
     private void verifySet3() {
-        final ValueAndTimestamp<String> latest = getFromStore("k");
+        final VersionedRecord<String> latest = getFromStore("k");
         assertThat(latest.value(), equalTo("vp20"));
         assertThat(latest.timestamp(), equalTo(SEGMENT_INTERVAL + 20));
 
-        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
+        final VersionedRecord<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
         assertThat(timeFilter.value(), equalTo("vp20"));
         assertThat(timeFilter.timestamp(), equalTo(SEGMENT_INTERVAL + 20));
 
-        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
+        final VersionedRecord<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
         assertThat(timeFilter1.value(), equalTo("vp10"));
         assertThat(timeFilter1.timestamp(), equalTo(SEGMENT_INTERVAL + 10));
 
-        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 5);
+        final VersionedRecord<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 5);
         assertThat(timeFilter2.value(), equalTo("vp1"));
         assertThat(timeFilter2.timestamp(), equalTo(SEGMENT_INTERVAL + 1));
 
-        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL);
+        final VersionedRecord<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL);
         assertThat(timeFilter3.value(), equalTo("vn1"));
         assertThat(timeFilter3.timestamp(), equalTo(SEGMENT_INTERVAL - 1));
 
-        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL - 1);
+        final VersionedRecord<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL - 1);
         assertThat(timeFilter4.value(), equalTo("vn1"));
         assertThat(timeFilter4.timestamp(), equalTo(SEGMENT_INTERVAL - 1));
 
-        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 5);
+        final VersionedRecord<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 5);
         assertThat(timeFilter5.value(), equalTo("vn10"));
         assertThat(timeFilter5.timestamp(), equalTo(SEGMENT_INTERVAL - 10));
     }
 
     private void verifySet4() {
-        final ValueAndTimestamp<String> latest = getFromStore("k");
+        final VersionedRecord<String> latest = getFromStore("k");
         assertThat(latest, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
+        final VersionedRecord<String> timeFilter = getFromStore("k", SEGMENT_INTERVAL + 30);
         assertThat(timeFilter, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
+        final VersionedRecord<String> timeFilter1 = getFromStore("k", SEGMENT_INTERVAL + 15);
         assertThat(timeFilter1, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 6);
+        final VersionedRecord<String> timeFilter2 = getFromStore("k", SEGMENT_INTERVAL + 6);
         assertThat(timeFilter2.value(), equalTo("vp5"));
         assertThat(timeFilter2.timestamp(), equalTo(SEGMENT_INTERVAL + 5));
 
-        final ValueAndTimestamp<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL + 2);
+        final VersionedRecord<String> timeFilter3 = getFromStore("k", SEGMENT_INTERVAL + 2);
         assertThat(timeFilter3, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL);
+        final VersionedRecord<String> timeFilter4 = getFromStore("k", SEGMENT_INTERVAL);
         assertThat(timeFilter4, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 1);
+        final VersionedRecord<String> timeFilter5 = getFromStore("k", SEGMENT_INTERVAL - 1);
         assertThat(timeFilter5, nullValue());
 
-        final ValueAndTimestamp<String> timeFilter6 = getFromStore("k", SEGMENT_INTERVAL - 5);
+        final VersionedRecord<String> timeFilter6 = getFromStore("k", SEGMENT_INTERVAL - 5);
         assertThat(timeFilter6.value(), equalTo("vn5"));
         assertThat(timeFilter6.timestamp(), equalTo(SEGMENT_INTERVAL - 5));
 
-        final ValueAndTimestamp<String> timeFilter7 = getFromStore("k", SEGMENT_INTERVAL - 6);
+        final VersionedRecord<String> timeFilter7 = getFromStore("k", SEGMENT_INTERVAL - 6);
         assertThat(timeFilter7.value(), equalTo("vn6"));
         assertThat(timeFilter7.timestamp(), equalTo(SEGMENT_INTERVAL - 6));
 
-        final ValueAndTimestamp<String> timeFilter8 = getFromStore("k", SEGMENT_INTERVAL - 8);
+        final VersionedRecord<String> timeFilter8 = getFromStore("k", SEGMENT_INTERVAL - 8);
         assertThat(timeFilter8, nullValue());
     }
 
@@ -706,35 +706,35 @@ public class RocksDBVersionedStoreTest {
     }
 
     private String getValueFromStore(final String key) {
-        final ValueAndTimestamp<String> valueAndTimestamp = getFromStore(key);
-        return valueAndTimestamp == null ? null : valueAndTimestamp.value();
+        final VersionedRecord<String> versionedRecord = getFromStore(key);
+        return versionedRecord == null ? null : versionedRecord.value();
     }
 
     private String getValueFromStore(final String key, final long timestampTo) {
-        final ValueAndTimestamp<String> valueAndTimestamp = getFromStore(key, timestampTo);
-        return valueAndTimestamp == null ? null : valueAndTimestamp.value();
+        final VersionedRecord<String> versionedRecord = getFromStore(key, timestampTo);
+        return versionedRecord == null ? null : versionedRecord.value();
     }
 
     // TODO: de-dup from below
-    private ValueAndTimestamp<String> getFromStore(final String key) {
-        final ValueAndTimestamp<byte[]> valueAndTimestamp
+    private VersionedRecord<String> getFromStore(final String key) {
+        final VersionedRecord<byte[]> versionedRecord
             = store.get(new Bytes(stringSerializer.serialize(null, key)));
         //= store.get(new Bytes(key.getBytes(UTF_8)));
-        return valueAndTimestamp == null
+        return versionedRecord == null
             ? null
-            : ValueAndTimestamp.make(
-            stringDeserializer.deserialize(null, valueAndTimestamp.value()),
-            valueAndTimestamp.timestamp());
+            : VersionedRecord.make(
+            stringDeserializer.deserialize(null, versionedRecord.value()),
+            versionedRecord.timestamp());
     }
 
-    private ValueAndTimestamp<String> getFromStore(final String key, final long timestampTo) {
-        final ValueAndTimestamp<byte[]> valueAndTimestamp
+    private VersionedRecord<String> getFromStore(final String key, final long timestampTo) {
+        final VersionedRecord<byte[]> versionedRecord
             = store.get(new Bytes(stringSerializer.serialize(null, key)), timestampTo);
-        return valueAndTimestamp == null
+        return versionedRecord == null
             ? null
-            : ValueAndTimestamp.make(
-            stringDeserializer.deserialize(null, valueAndTimestamp.value()),
-            valueAndTimestamp.timestamp());
+            : VersionedRecord.make(
+            stringDeserializer.deserialize(null, versionedRecord.value()),
+            versionedRecord.timestamp());
     }
 
     private static List<ConsumerRecord<byte[], byte[]>> getChangelogRecords(List<DataRecord> data) {

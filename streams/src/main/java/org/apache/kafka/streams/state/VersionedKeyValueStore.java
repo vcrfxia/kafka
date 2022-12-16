@@ -83,20 +83,4 @@ public interface VersionedKeyValueStore<K, V> extends StateStore {
      * @throws InvalidStateStoreException if the store is not initialized
      */
     VersionedRecord<V> get(K key, long asOfTimestamp);
-
-    // additional methods we could choose to support if we wanted, but aren't strictly necessary
-    ValueAndTimestamp<V> putIfAbsent(K key, V value, long timestamp);
-    void putAll(List<KeyValueTimestamp<K, V>> entries);
-
-    KeyValueTimestampIterator<K, V> range(K from, K to);
-    KeyValueTimestampIterator<K, V> range(K from, K to, long timestampTo);
-    KeyValueTimestampIterator<K, V> reverseRange(K from, K to);
-    KeyValueTimestampIterator<K, V> reverseRange(K from, K to, long timestampTo);
-    KeyValueTimestampIterator<K, V> all();
-    KeyValueTimestampIterator<K, V> all(long timestampTo);
-    KeyValueTimestampIterator<K, V> reverseAll();
-    KeyValueTimestampIterator<K, V> reverseAll(long timestampTo);
-    <PS extends Serializer<P>, P> KeyValueTimestampIterator<K, byte[]> prefixScan(P prefix, PS prefixKeySerializer);
-    <PS extends Serializer<P>, P> KeyValueTimestampIterator<K, byte[]> prefixScan(P prefix, PS prefixKeySerializer, long timestampTo);
-    long approximateNumEntries();
 }

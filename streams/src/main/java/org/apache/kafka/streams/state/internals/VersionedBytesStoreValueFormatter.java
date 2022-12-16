@@ -2,6 +2,7 @@ package org.apache.kafka.streams.state.internals;
 
 import java.nio.ByteBuffer;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.streams.state.VersionedRecord;
 
 final class VersionedBytesStoreValueFormatter {
 
@@ -30,15 +31,15 @@ final class VersionedBytesStoreValueFormatter {
         return tombstoneIndicator == 1;
     }
 
-    static byte[] toReturnBytes(final ValueAndTimestamp<byte[]> valueAndTimestamp) {
-        if (valueAndTimestamp == null) {
+    static byte[] toReturnBytes(final VersionedRecord<byte[]> versionedRecord) {
+        if (versionedRecord == null) {
             return null;
         }
         return ByteBuffer
-            .allocate(valueAndTimestamp.value().length + 16)
-            .putLong(valueAndTimestamp.timestamp())
+            .allocate(versionedRecord.value().length + 16)
+            .putLong(versionedRecord.timestamp())
             .putLong(0L)
-            .put(valueAndTimestamp.value())
+            .put(versionedRecord.value())
             .array();
     }
 

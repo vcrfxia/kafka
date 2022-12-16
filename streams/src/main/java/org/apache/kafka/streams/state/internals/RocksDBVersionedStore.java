@@ -26,6 +26,7 @@ import org.apache.kafka.streams.query.Position;
 import org.apache.kafka.streams.state.KeyValueTimestampIterator;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
+import org.apache.kafka.streams.state.VersionedRecord;
 import org.apache.kafka.streams.state.internals.RocksDBVersionedStoreSegmentValueFormatter.SegmentValue;
 import org.apache.kafka.streams.state.internals.RocksDBVersionedStoreSegmentValueFormatter.SegmentValue.SegmentSearchResult;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
@@ -104,41 +105,19 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     }
 
     @Override
-    public ValueAndTimestamp<byte[]> putIfAbsent(final Bytes key, final byte[] value, final long timestamp) {
-//        LOG.info(String.format("vxia debug: putIfAbsent: key (%s), value (%s), ts (%d)",
-//            key.toString(),
-//            valueAndTimestamp.value() == null ? "null" : Arrays.toString(valueAndTimestamp.value()),
-//            valueAndTimestamp.timestamp()
-//        ));
-
-        return null;
-    }
-
-    @Override
-    public void putAll(final List<KeyValueTimestamp<Bytes, byte[]>> entries) {
-        LOG.info("vxia debug: putAll:");
-        for (final KeyValueTimestamp<Bytes,byte[]> entry : entries) {
-            LOG.info(String.format("vxia debug: \tkey (%s), value (%s), ts (%d)",
-                entry.key.toString(),
-                entry.value == null ? "null" : Arrays.toString(entry.value),
-                entry.timestamp
-            ));
-        }
-    }
-
-    @Override
-    public byte[] delete(final Bytes key) {
+    public VersionedRecord<byte[]> delete(final Bytes key, final long timestamp) {
         LOG.info(String.format("vxia debug: delete: key (%s), ts (%d)",
             key.toString(),
-            context.timestamp()
+            timestamp
         ));
 
-        put(key,null, context.timestamp()); // TODO: this needs to be udpated for new semantics (delete all versions for the key)
-        return null;
+        final VersionedRecord<byte[]> ret = get(key, timestamp);
+        put(key,null, timestamp);
+        return ret;
     }
 
     @Override
-    public ValueAndTimestamp<byte[]> get(final Bytes key) {
+    public VersionedRecord<byte[]> get(final Bytes key) {
 //        LOG.info(String.format("vxia debug: get: key (%s)",
 //            key.toString()
 //        ));
@@ -146,7 +125,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         // latest value is guaranteed to be present in the latest value store
         final byte[] latestValue = latestValueStore.get(key);
         if (latestValue != null) {
-            return ValueAndTimestamp.make(
+            return VersionedRecord.make(
                 latestValueSchema.getValue(latestValue),
                 latestValueSchema.getTimestamp(latestValue)
             );
@@ -156,7 +135,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     }
 
     @Override
-    public ValueAndTimestamp<byte[]> get(final Bytes key, final long timestampTo) {
+    public VersionedRecord<byte[]> get(final Bytes key, final long asOfTimestamp) {
 //        LOG.info(String.format("vxia debug: get: key (%s), tsTo (%d)",
 //            key.toString(),
 //            timestampTo
@@ -166,26 +145,26 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         final byte[] latestValue = latestValueStore.get(key);
         if (latestValue != null) {
             final long latestTimestamp = latestValueSchema.getTimestamp(latestValue);
-            if (latestTimestamp <= timestampTo) {
-                return ValueAndTimestamp
+            if (latestTimestamp <= asOfTimestamp) {
+                return VersionedRecord
                     .make(latestValueSchema.getValue(latestValue), latestTimestamp);
             }
         }
 
         // check segment stores
-        final List<LogicalKeyValueSegment> segments = segmentStores.segments(timestampTo, Long.MAX_VALUE, false);
+        final List<LogicalKeyValueSegment> segments = segmentStores.segments(asOfTimestamp, Long.MAX_VALUE, false);
         for (final LogicalKeyValueSegment segment : segments) {
             final byte[] segmentValue = segment.get(key);
             if (segmentValue != null) {
                 final long nextTs = segmentValueSchema.getNextTimestamp(segmentValue);
-                if (nextTs <= timestampTo) {
+                if (nextTs <= asOfTimestamp) {
                     // this segment contains no data for the queried timestamp, so earlier segments
                     // cannot either
                     return null;
                 }
 
                 if (segmentValueSchema.isEmpty(segmentValue)
-                    || segmentValueSchema.getMinTimestamp(segmentValue) > timestampTo) {
+                    || segmentValueSchema.getMinTimestamp(segmentValue) > asOfTimestamp) {
                     // the segment only contains data for after the queried timestamp. skip and
                     // continue the search to earlier segments.
                     continue;
@@ -194,9 +173,9 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
                 // the desired result is contained in this segment
                 final SegmentSearchResult searchResult =
-                    segmentValueSchema.deserialize(segmentValue).find(timestampTo, true);
+                    segmentValueSchema.deserialize(segmentValue).find(asOfTimestamp, true);
                 if (searchResult.value() != null) { // TODO: handle byte[0] here?
-                    return ValueAndTimestamp.make(searchResult.value(), searchResult.validFrom());
+                    return VersionedRecord.make(searchResult.value(), searchResult.validFrom());
                 } else {
                     return null;
                 }
@@ -204,106 +183,6 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         }
 
         // checked all segments and no results found
-        return null;
-    }
-
-    @Override
-    public KeyValueTimestampIterator<Bytes, byte[]> range(final Bytes from, final Bytes to) {
-        LOG.info(String.format("vxia debug: range: from (%s), to (%s)",
-            from.toString(),
-            to.toString()
-        ));
-
-        // TODO
-        return null;
-    }
-
-    @Override
-    public KeyValueTimestampIterator<Bytes, byte[]> range(final Bytes from, final Bytes to, final long timestampTo) {
-        LOG.info(String.format("vxia debug: range: from (%s), to (%s), tsTo (%d)",
-            from.toString(),
-            to.toString(),
-            timestampTo
-        ));
-
-        // TODO
-        return null;
-    }
-
-    @Override
-    public KeyValueTimestampIterator<Bytes, byte[]> reverseRange(final Bytes from, final Bytes to) {
-        LOG.info(String.format("vxia debug: reverseRange: from (%s), to (%s)",
-            from.toString(),
-            to.toString()
-        ));
-
-        // TODO
-        return null;
-    }
-
-    @Override
-    public KeyValueTimestampIterator<Bytes, byte[]> reverseRange(final Bytes from, final Bytes to, final long timestampTo) {
-        LOG.info(String.format("vxia debug: reverseRange: from (%s), to (%s), tsTo (%d)",
-            from.toString(),
-            to.toString(),
-            timestampTo
-        ));
-
-        // TODO
-        return null;
-    }
-
-    @Override
-    public KeyValueTimestampIterator<Bytes, byte[]> all() {
-        LOG.info("vxia debug: all");
-
-        // TODO
-        return null;
-    }
-
-    @Override
-    public KeyValueTimestampIterator<Bytes, byte[]> all(final long timestampTo) {
-        LOG.info(String.format("vxia debug: all: tsTo (%d)",
-            timestampTo
-        ));
-
-        // TODO
-        return null;
-    }
-
-    @Override
-    public KeyValueTimestampIterator<Bytes, byte[]> reverseAll() {
-        LOG.info("vxia debug: reverseAll");
-
-        // TODO
-        return null;
-    }
-
-    @Override
-    public KeyValueTimestampIterator<Bytes, byte[]> reverseAll(final long timestampTo) {
-        LOG.info(String.format("vxia debug: reverseAll: tsTo (%d)",
-            timestampTo
-        ));
-
-        // TODO
-        return null;
-    }
-
-    @Override
-    public <PS extends Serializer<P>, P> KeyValueTimestampIterator<Bytes, byte[]> prefixScan(P prefix, PS prefixKeySerializer) {
-        LOG.info("vxia debug: prefixScan");
-
-        // TODO
-        return null;
-    }
-
-    @Override
-    public <PS extends Serializer<P>, P> KeyValueTimestampIterator<Bytes, byte[]> prefixScan(P prefix, PS prefixKeySerializer, long timestampTo) {
-        LOG.info(String.format("vxia debug: prefixScan: tsTo (%d)",
-            timestampTo
-        ));
-
-        // TODO
         return null;
     }
 
@@ -342,12 +221,6 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     @Override
     public Position getPosition() {
         return position;
-    }
-
-    @Override
-    public long approximateNumEntries() {
-        // TODO: decide what to do with this
-        throw new UnsupportedOperationException();
     }
 
     @Deprecated

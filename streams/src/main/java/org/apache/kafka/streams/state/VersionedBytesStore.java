@@ -11,8 +11,10 @@ public interface VersionedBytesStore extends KeyValueStore<Bytes, byte[]>, Times
     /**
      * The analog of {@link VersionedKeyValueStore#get(Object, long)}.
      */
-    byte[] get(Bytes key, long timestampTo);
+    byte[] get(Bytes key, long asOfTimestamp);
 
-    // add other methods specific to versioned stores
-
+    /**
+     * The analog of {@link VersionedKeyValueStore#delete(Object, long)}.
+     */
+    byte[] delete(Bytes key, long timestamp);
 }

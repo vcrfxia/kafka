@@ -14,9 +14,9 @@ import org.apache.kafka.streams.query.Query;
 import org.apache.kafka.streams.query.QueryConfig;
 import org.apache.kafka.streams.query.QueryResult;
 import org.apache.kafka.streams.state.KeyValueIterator;
-import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.apache.kafka.streams.state.VersionedBytesStore;
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
+import org.apache.kafka.streams.state.VersionedRecord;
 
 /**
  * Adapts from VersionedKeyValueStore (user-friendly versioned store interface) to KeyValueStore,
@@ -44,33 +44,26 @@ public class VersionedBytesStoreAdaptor implements VersionedBytesStore {
     // returns timestamp, bool, and value
     @Override
     public byte[] get(Bytes key) {
-        final ValueAndTimestamp<byte[]> valueAndTimestamp = inner.get(key);
-        return VersionedBytesStoreValueFormatter.toReturnBytes(valueAndTimestamp);
+        final VersionedRecord<byte[]> versionedRecord = inner.get(key);
+        return VersionedBytesStoreValueFormatter.toReturnBytes(versionedRecord);
     }
 
     // returns timestamp, bool, and value
     @Override
     public byte[] get(Bytes key, long timestampTo) {
-        final ValueAndTimestamp<byte[]> valueAndTimestamp = inner.get(key, timestampTo);
-        return VersionedBytesStoreValueFormatter.toReturnBytes(valueAndTimestamp);
+        final VersionedRecord<byte[]> versionedRecord = inner.get(key, timestampTo);
+        return VersionedBytesStoreValueFormatter.toReturnBytes(versionedRecord);
     }
 
-
-    // --- bunch of other methods from KeyValueStore, which are adapted similarly (implementations left out for brevity) ---
-
+    // returns timestamp, bool, and value
     @Override
-    public byte[] putIfAbsent(Bytes key, byte[] value) {
-        return new byte[0];
+    public byte[] delete(Bytes key, long timestamp) {
+        final VersionedRecord<byte[]> versionedRecord = inner.get(key, timestamp);
+        inner.put(key, null, timestamp);
+        return VersionedBytesStoreValueFormatter.toReturnBytes(versionedRecord);
     }
 
-    @Override
-    public void putAll(List<KeyValue<Bytes, byte[]>> entries) {
-    }
-
-    @Override
-    public byte[] delete(Bytes key) {
-        return new byte[0];
-    }
+    // --- bunch of methods which are direct pass-throughs ---
 
     @Override
     public String name() {
@@ -110,42 +103,59 @@ public class VersionedBytesStoreAdaptor implements VersionedBytesStore {
 
     @Override
     public <R> QueryResult<R> query(Query<R> query, PositionBound positionBound, QueryConfig config) {
-        return null;
+        return inner.query(query, positionBound, config);
     }
 
     @Override
     public Position getPosition() {
-        return null;
+        return inner.getPosition();
+    }
+
+    // --- bunch of methods that VersionedKeyValueStore does not support ---
+
+    @Override
+    public byte[] putIfAbsent(Bytes key, byte[] value) {
+        throw new UnsupportedOperationException("Versioned key-value stores do not support putIfAbsent(key, value)");
+    }
+
+    @Override
+    public void putAll(List<KeyValue<Bytes, byte[]>> entries) {
+        throw new UnsupportedOperationException("Versioned key-value stores do not support putAll(entries)");
+    }
+
+    @Override
+    public byte[] delete(Bytes key) {
+        throw new UnsupportedOperationException("Versioned key-value stores do not support delete(key)");
     }
 
     @Override
     public KeyValueIterator<Bytes, byte[]> range(Bytes from, Bytes to) {
-        return null;
+        throw new UnsupportedOperationException("Versioned key-value stores do not support range(from, to)");
     }
 
     @Override
     public KeyValueIterator<Bytes, byte[]> reverseRange(Bytes from, Bytes to) {
-        return null;
+        throw new UnsupportedOperationException("Versioned key-value stores do not support reverseRange(from, to)");
     }
 
     @Override
     public KeyValueIterator<Bytes, byte[]> all() {
-        return null;
+        throw new UnsupportedOperationException("Versioned key-value stores do not support all()");
     }
 
     @Override
     public KeyValueIterator<Bytes, byte[]> reverseAll() {
-        return null;
+        throw new UnsupportedOperationException("Versioned key-value stores do not support reverseAll()");
     }
 
     @Override
     public <PS extends Serializer<P>, P> KeyValueIterator<Bytes, byte[]> prefixScan(P prefix, PS prefixKeySerializer) {
-        return null;
+        throw new UnsupportedOperationException("Versioned key-value stores do not support prefixScan(prefix, prefixKeySerializer)");
     }
 
     @Override
     public long approximateNumEntries() {
-        return 0;
+        throw new UnsupportedOperationException("Versioned key-value stores do not support approximateNumEntries()");
     }
 
 }
