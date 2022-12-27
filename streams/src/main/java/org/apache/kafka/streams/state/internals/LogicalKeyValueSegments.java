@@ -1,5 +1,7 @@
 package org.apache.kafka.streams.state.internals;
 
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.internals.ProcessorContextUtils;
 import org.apache.kafka.streams.state.internals.metrics.RocksDBMetricsRecorder;
@@ -8,6 +10,9 @@ public class LogicalKeyValueSegments extends AbstractSegments<LogicalKeyValueSeg
 
     private final RocksDBMetricsRecorder metricsRecorder;
     private final RocksDBStore physicalStore;
+
+    // reserved segments do not expire, may have negative segment id and custom naming scheme
+    private final Map<Long, LogicalKeyValueSegment> reservedSegments = new HashMap<>();
 
     // VisibleForTesting
     LogicalKeyValueSegments(final String name,
@@ -34,6 +39,18 @@ public class LogicalKeyValueSegments extends AbstractSegments<LogicalKeyValueSeg
         return segments.get(segmentId);
     }
 
+    LogicalKeyValueSegment createReservedSegment(final long segmentId, final String segmentName) {
+        final LogicalKeyValueSegment newSegment = new LogicalKeyValueSegment(segmentId, segmentName, physicalStore);
+
+        if (reservedSegments.put(segmentId, newSegment) != null) {
+            throw new IllegalStateException("LogicalKeyValueSegment already exists.");
+        }
+
+        // do not open segment before returning. caller is responsible for opening
+        return newSegment;
+    }
+
+    // TODO: add stricter checks for non-overlap of segment ID between reserved and non-reserved segments?
 
     @Override
     public LogicalKeyValueSegment getOrCreateSegment(final long segmentId,
@@ -44,7 +61,7 @@ public class LogicalKeyValueSegments extends AbstractSegments<LogicalKeyValueSeg
             final LogicalKeyValueSegment newSegment = new LogicalKeyValueSegment(segmentId, segmentName(segmentId), physicalStore);
 
             if (segments.put(segmentId, newSegment) != null) {
-                throw new IllegalStateException("KeyValueSegment already exists. Possible concurrent access.");
+                throw new IllegalStateException("LogicalKeyValueSegment already exists. Possible concurrent access.");
             }
 
             newSegment.openDB();

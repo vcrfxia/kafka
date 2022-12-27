@@ -23,6 +23,7 @@ import org.apache.kafka.streams.processor.internals.StoreToProcessorContextAdapt
 import org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl;
 import org.apache.kafka.streams.processor.internals.metrics.TaskMetrics;
 import org.apache.kafka.streams.query.Position;
+import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.KeyValueTimestampIterator;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
@@ -41,7 +42,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
     private final long historyRetention;
     private final RocksDBMetricsRecorder metricsRecorder;
 
-    private final RocksDBStore latestValueStore;
+    private final LogicalKeyValueSegment latestValueStore; // TODO: don't love this type
     private final LogicalKeyValueSegments segmentStores;
     private final LatestValueSchema latestValueSchema;
     private final SegmentValueSchema segmentValueSchema;
@@ -65,8 +66,8 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         this.name = name;
         this.historyRetention = historyRetention;
         this.metricsRecorder = new RocksDBMetricsRecorder(metricsScope, name);
-        this.latestValueStore = new RocksDBStore(lvsName(name), name, metricsRecorder);
         this.segmentStores = new LogicalKeyValueSegments(segmentsName(name), name, historyRetention, segmentInterval, metricsRecorder);
+        this.latestValueStore = this.segmentStores.createReservedSegment(-1L, lvsName(name));
         this.latestValueSchema = new LatestValueSchema();
         this.segmentValueSchema = new SegmentValueSchema();
         this.versionedStoreClient = new RocksDBVersionedStoreClient();
@@ -195,7 +196,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         LOG.info("vxia debug: flush");
 
         segmentStores.flush();
-        latestValueStore.flush(); // TODO: inconsistency concern if second flush fails?
+        // flushing segment includes flushing latest value store since they share a physical
     }
 
     @Override
@@ -203,8 +204,8 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         LOG.info("vxia debug: close");
 
         open = false;
-        latestValueStore.close(); // TODO: inconsistency concern with regards to order?
         segmentStores.close();
+        // closing segment includes closing latest value store since they share a physical
     }
 
     @Override
@@ -241,9 +242,8 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
 
         metricsRecorder.init(ProcessorContextUtils.getMetricsImpl(context), context.taskId());
 
-        latestValueStore.openDB(context.appConfigs(), context.stateDir()); // TODO: does this mean we actually don't need to relax the restriction that restore is allowed to take place before db is open?
-        //latestValueStore.init(context, root);
         segmentStores.openExisting(context, observedStreamTime);
+        latestValueStore.openDB();
 
         final File positionCheckpointFile = new File(context.stateDir(), name() + ".position");
         this.positionCheckpoint = new OffsetCheckpoint(positionCheckpointFile);
