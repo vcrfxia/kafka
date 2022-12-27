@@ -125,7 +125,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         // latest value is guaranteed to be present in the latest value store
         final byte[] latestValue = latestValueStore.get(key);
         if (latestValue != null) {
-            return VersionedRecord.make(
+            return new VersionedRecord<>(
                 latestValueSchema.getValue(latestValue),
                 latestValueSchema.getTimestamp(latestValue)
             );
@@ -146,8 +146,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
         if (latestValue != null) {
             final long latestTimestamp = latestValueSchema.getTimestamp(latestValue);
             if (latestTimestamp <= asOfTimestamp) {
-                return VersionedRecord
-                    .make(latestValueSchema.getValue(latestValue), latestTimestamp);
+                return new VersionedRecord<>(latestValueSchema.getValue(latestValue), latestTimestamp);
             }
         }
 
@@ -175,7 +174,7 @@ public class RocksDBVersionedStore implements VersionedKeyValueStore<Bytes, byte
                 final SegmentSearchResult searchResult =
                     segmentValueSchema.deserialize(segmentValue).find(asOfTimestamp, true);
                 if (searchResult.value() != null) { // TODO: handle byte[0] here?
-                    return VersionedRecord.make(searchResult.value(), searchResult.validFrom());
+                    return new VersionedRecord<>(searchResult.value(), searchResult.validFrom());
                 } else {
                     return null;
                 }

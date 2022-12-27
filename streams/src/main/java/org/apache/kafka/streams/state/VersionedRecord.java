@@ -30,24 +30,16 @@ public final class VersionedRecord<V> {
     private final V value;
     private final long timestamp;
 
-    private VersionedRecord(final V value, final long timestamp) {
-        this.value = Objects.requireNonNull(value);
-        this.timestamp = timestamp;
-    }
-
     /**
      * Create a new {@link VersionedRecord} instance. {@code value} cannot be {@code null}.
      *
      * @param value      the value
      * @param timestamp  the timestamp
-     * @param <V> the type of the value
      * @return a new {@link VersionedRecord} instance
      */
-    public static <V> VersionedRecord<V> make(final V value, final long timestamp) {
-        if (value == null) {
-            throw new IllegalArgumentException("value cannot be null");
-        }
-        return new VersionedRecord<>(value, timestamp);
+    public VersionedRecord(final V value, final long timestamp) {
+        this.value = Objects.requireNonNull(value);
+        this.timestamp = timestamp;
     }
 
     public V value() {

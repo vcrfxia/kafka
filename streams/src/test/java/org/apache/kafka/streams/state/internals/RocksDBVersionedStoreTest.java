@@ -722,7 +722,7 @@ public class RocksDBVersionedStoreTest {
         //= store.get(new Bytes(key.getBytes(UTF_8)));
         return versionedRecord == null
             ? null
-            : VersionedRecord.make(
+            : new VersionedRecord<>(
             stringDeserializer.deserialize(null, versionedRecord.value()),
             versionedRecord.timestamp());
     }
@@ -732,7 +732,7 @@ public class RocksDBVersionedStoreTest {
             = store.get(new Bytes(stringSerializer.serialize(null, key)), timestampTo);
         return versionedRecord == null
             ? null
-            : VersionedRecord.make(
+            : new VersionedRecord<>(
             stringDeserializer.deserialize(null, versionedRecord.value()),
             versionedRecord.timestamp());
     }

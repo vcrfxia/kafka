@@ -51,7 +51,7 @@ class VersionedKeyValueStoreAdaptor<K, V> implements VersionedKeyValueStore<K, V
         if (valueAndTimestamp == null) {
             return null;
         }
-        return VersionedRecord.make(valueAndTimestamp.value(), valueAndTimestamp.timestamp());
+        return new VersionedRecord<>(valueAndTimestamp.value(), valueAndTimestamp.timestamp());
     }
 
     // --- bunch of pass-through methods ---
