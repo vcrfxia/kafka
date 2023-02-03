@@ -22,10 +22,10 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.streams.state.KeyValueStore;
 
 import java.util.Objects;
+import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.apache.kafka.streams.state.VersionedBytesStore;
 import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
-import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 
 public class VersionedKeyValueStoreBuilder<K, V>
     extends AbstractStoreBuilder<K, V, VersionedKeyValueStore<K, V>> {
@@ -53,22 +53,27 @@ public class VersionedKeyValueStoreBuilder<K, V>
             throw new IllegalStateException("VersionedBytesStoreSupplier.get() must return an instance of VersionedBytesStore");
         }
 
-        final VersionedKeyValueStoreInternal<Bytes, byte[]> versionedStore =
-            new VersionedKeyValueStoreInternalAdaptor((VersionedBytesStore) store);
+        final Serde<ValueAndTimestamp<V>> valueAndTimestampSerde = valueSerde == null
+            ? null
+            : new NullableValueAndTimestampSerde<>(valueSerde);
+
+        // TODO: there used to be a usage of VersionedKeyValueStoreInternalAdaptor here,
+        // but after the refactor to have wrapped store layers operate on the bytes store,
+        // I think this might've been absorbed into MeteredVersionedKeyValueStore itself instead?
         return new VersionedKeyValueStoreAdaptor<>(
-            new MeteredTimeAwareKeyValueStore<>(
-            maybeWrapLogging(versionedStore), // no caching layer for versioned stores
-            storeSupplier.metricsScope(),
-            time,
-            keySerde,
-            valueSerde)
+            new MeteredVersionedKeyValueStore<>( // TODO: need an outer translation layer to create ValueAndTimestamp with null value on put()
+                maybeWrapLogging((VersionedBytesStore) store), // no caching layer for versioned stores
+                storeSupplier.metricsScope(),
+                time,
+                keySerde,
+                valueAndTimestampSerde)
         );
     }
 
-    private VersionedKeyValueStoreInternal<Bytes, byte[]> maybeWrapLogging(final VersionedKeyValueStoreInternal<Bytes, byte[]> inner) {
+    private VersionedBytesStore maybeWrapLogging(final VersionedBytesStore inner) {
         if (!enableLogging) {
             return inner;
         }
-        return new ChangeLoggingTimeAwareKeyValueBytesStore<>(inner);
+        return new ChangeLoggingVersionedKeyValueBytesStore(inner);
     }
 }

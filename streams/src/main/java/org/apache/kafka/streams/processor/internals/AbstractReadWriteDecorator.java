@@ -168,28 +168,6 @@ abstract class AbstractReadWriteDecorator<T extends StateStore, K, V> extends Wr
         public ValueAndTimestamp<V> get(final K key, final long timestampTo) {
             return wrapped().get(key, timestampTo);
         }
-
-        @Override
-        public KeyValueIterator<K, ValueAndTimestamp<V>> range(final K from,
-                                            final K to, final long timestampTo) {
-            return wrapped().range(from, to, timestampTo);
-        }
-
-        @Override
-        public KeyValueIterator<K, ValueAndTimestamp<V>> reverseRange(final K from,
-                                                   final K to, final long timestampTo) {
-            return wrapped().reverseRange(from, to, timestampTo);
-        }
-
-        @Override
-        public KeyValueIterator<K, ValueAndTimestamp<V>> all(final long timestampTo) {
-            return wrapped().all(timestampTo);
-        }
-
-        @Override
-        public KeyValueIterator<K, ValueAndTimestamp<V>> reverseAll(final long timestampTo) {
-            return wrapped().reverseAll(timestampTo);
-        }
     }
 
     static class WindowStoreReadWriteDecorator<K, V>

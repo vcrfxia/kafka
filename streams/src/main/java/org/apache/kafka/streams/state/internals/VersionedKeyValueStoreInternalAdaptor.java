@@ -65,26 +65,6 @@ class VersionedKeyValueStoreInternalAdaptor implements VersionedKeyValueStoreInt
     // --- bunch of other methods from TimestampedKeyValueStore, which are adapted similarly (implementations left out for brevity) ---
 
     @Override
-    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> range(Bytes from, Bytes to, long timestampTo) {
-        return null;
-    }
-
-    @Override
-    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseRange(Bytes from, Bytes to, long timestampTo) {
-        return null;
-    }
-
-    @Override
-    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> all(long timestampTo) {
-        return null;
-    }
-
-    @Override
-    public KeyValueIterator<Bytes, ValueAndTimestamp<byte[]>> reverseAll(long timestampTo) {
-        return null;
-    }
-
-    @Override
     public ValueAndTimestamp<byte[]> putIfAbsent(Bytes key, ValueAndTimestamp<byte[]> value) {
         return null;
     }

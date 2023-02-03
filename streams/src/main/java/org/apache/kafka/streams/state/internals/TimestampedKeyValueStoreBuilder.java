@@ -40,13 +40,11 @@ import java.util.List;
 import java.util.Objects;
 import org.apache.kafka.streams.state.VersionedBytesStore;
 import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
-import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 
 public class TimestampedKeyValueStoreBuilder<K, V>
     extends AbstractStoreBuilder<K, ValueAndTimestamp<V>, TimestampedKeyValueStore<K, V>> {
 
     private final KeyValueBytesStoreSupplier storeSupplier;
-    private final Serde<V> innerValueSerde;
 
     public TimestampedKeyValueStoreBuilder(final KeyValueBytesStoreSupplier storeSupplier,
                                            final Serde<K> keySerde,
@@ -55,11 +53,14 @@ public class TimestampedKeyValueStoreBuilder<K, V>
         super(
             storeSupplier.name(),
             keySerde,
-            valueSerde == null ? null : new ValueAndTimestampSerde<>(valueSerde),
+            valueSerde == null
+                ? null
+                : storeSupplier instanceof VersionedBytesStoreSupplier
+                    ? new NullableValueAndTimestampSerde<>(valueSerde)
+                    : new ValueAndTimestampSerde<>(valueSerde),
             time);
         Objects.requireNonNull(storeSupplier, "storeSupplier can't be null");
         Objects.requireNonNull(storeSupplier.metricsScope(), "storeSupplier's metricsScope can't be null");
-        this.innerValueSerde = valueSerde;
         this.storeSupplier = storeSupplier;
     }
 
@@ -78,14 +79,15 @@ public class TimestampedKeyValueStoreBuilder<K, V>
             if (!(store instanceof VersionedBytesStore)) {
                 throw new IllegalStateException("VersionedBytesStoreSupplier.get() must return an instance of VersionedBytesStore");
             }
-            final VersionedKeyValueStoreInternal<Bytes, byte[]> versionedStore =
-                new VersionedKeyValueStoreInternalAdaptor((VersionedBytesStore) store);
-            return new MeteredTimeAwareKeyValueStore<>(
-                maybeWrapLogging(versionedStore), // no caching layer for versioned stores
+            // TODO: there used to be a usage of VersionedKeyValueStoreInternalAdaptor here,
+            // but after the refactor to have wrapped store layers operate on the bytes store,
+            // I think this might've been absorbed into MeteredVersionedKeyValueStore itself instead?
+            return new MeteredVersionedKeyValueStore<>( // TODO: need an outer translation layer to create ValueAndTimestamp with null value on put()
+                maybeWrapLoggingVersioned((VersionedBytesStore) store), // no caching layer for versioned stores
                 storeSupplier.metricsScope(),
                 time,
                 keySerde,
-                innerValueSerde);
+                valueSerde);
         } else {
             return new MeteredTimestampedKeyValueStore<>(
                 maybeWrapCaching(maybeWrapLogging(store)),
@@ -121,11 +123,11 @@ public class TimestampedKeyValueStoreBuilder<K, V>
         return new ChangeLoggingTimestampedKeyValueBytesStore(inner);
     }
 
-    private VersionedKeyValueStoreInternal<Bytes, byte[]> maybeWrapLogging(final VersionedKeyValueStoreInternal<Bytes, byte[]> inner) {
+    private VersionedBytesStore maybeWrapLoggingVersioned(final VersionedBytesStore inner) {
         if (!enableLogging) {
             return inner;
         }
-        return new ChangeLoggingTimeAwareKeyValueBytesStore<>(inner);
+        return new ChangeLoggingVersionedKeyValueBytesStore(inner);
     }
 
     private final static class InMemoryTimestampedKeyValueStoreMarker
