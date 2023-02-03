@@ -190,7 +190,7 @@ public final class StateSerdes<K, V> {
      * @param value  the value to be serialized
      * @return       the serialized value
      */
-    public byte[] rawValue(final V value) {
+    public byte[] rawValue(final V value) { // TODO(vxia): this needs an update
         try {
             return valueSerde.serializer().serialize(topic, value);
         } catch (final ClassCastException e) {

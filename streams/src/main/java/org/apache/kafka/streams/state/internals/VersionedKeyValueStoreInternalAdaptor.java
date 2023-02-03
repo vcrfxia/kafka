@@ -2,6 +2,9 @@ package org.apache.kafka.streams.state.internals;
 
 import java.util.List;
 import java.util.Objects;
+import org.apache.kafka.common.serialization.Deserializer;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serdes.ByteArraySerde;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
@@ -23,6 +26,12 @@ import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
  * the codebase everywhere that TimestampedKeyValueStore is used today.
  */
 class VersionedKeyValueStoreInternalAdaptor implements VersionedKeyValueStoreInternal<Bytes, byte[]> {
+    private static final Serde<ValueAndTimestamp<byte[]>> VALUE_AND_TIMESTAMP_SERDE
+        = new NullableValueAndTimestampSerde<>(new ByteArraySerde());
+    private static final Serializer<ValueAndTimestamp<byte[]>> VALUE_AND_TIMESTAMP_SERIALIZER
+        = VALUE_AND_TIMESTAMP_SERDE.serializer();
+    private static final Deserializer<ValueAndTimestamp<byte[]>> VALUE_AND_TIMESTAMP_DESERIALIZER
+        = VALUE_AND_TIMESTAMP_SERDE.deserializer();
 
     private final VersionedBytesStore inner;
 
@@ -32,31 +41,24 @@ class VersionedKeyValueStoreInternalAdaptor implements VersionedKeyValueStoreInt
 
     @Override
     public void put(Bytes key, ValueAndTimestamp<byte[]> valueAndTimestamp) {
-        inner.put(key, VersionedBytesStoreValueFormatter.toPutBytes(valueAndTimestamp));
+        final byte[] rawValueAndTimestamp = VALUE_AND_TIMESTAMP_SERIALIZER.serialize(null, valueAndTimestamp);
+        inner.put(key, rawValueAndTimestamp);
     }
 
     @Override
     public ValueAndTimestamp<byte[]> get(Bytes key) {
-        final byte[] valueAndTimestamp = inner.get(key);
-        if (valueAndTimestamp == null) {
-            return null;
-        }
-        return ValueAndTimestamp.make(
-            VersionedBytesStoreValueFormatter.rawValue(valueAndTimestamp),
-            VersionedBytesStoreValueFormatter.timestamp(valueAndTimestamp)
-        );
+        final byte[] rawValueAndTimestamp = inner.get(key);
+        return VALUE_AND_TIMESTAMP_DESERIALIZER.deserialize(null, rawValueAndTimestamp);
+        // TODO: does this need a check to ensure we never return non-null result with null value?
+        // previous code was confident that value never comes out as null, not sure how
     }
 
     @Override
     public ValueAndTimestamp<byte[]> get(Bytes key, long timestampTo) {
-        final byte[] valueAndTimestamp = inner.get(key, timestampTo);
-        if (valueAndTimestamp == null) {
-            return null;
-        }
-        return ValueAndTimestamp.make(
-            VersionedBytesStoreValueFormatter.rawValue(valueAndTimestamp),
-            VersionedBytesStoreValueFormatter.timestamp(valueAndTimestamp)
-        );
+        final byte[] rawValueAndTimestamp = inner.get(key, timestampTo);
+        return VALUE_AND_TIMESTAMP_DESERIALIZER.deserialize(null, rawValueAndTimestamp);
+        // TODO: does this need a check to ensure we never return non-null result with null value?
+        // previous code was confident that value never comes out as null, not sure how
     }
 
 

@@ -2,6 +2,9 @@ package org.apache.kafka.streams.state.internals;
 
 import java.util.List;
 import java.util.Objects;
+import org.apache.kafka.common.serialization.Deserializer;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serdes.ByteArraySerde;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
@@ -14,6 +17,7 @@ import org.apache.kafka.streams.query.Query;
 import org.apache.kafka.streams.query.QueryConfig;
 import org.apache.kafka.streams.query.QueryResult;
 import org.apache.kafka.streams.state.KeyValueIterator;
+import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.apache.kafka.streams.state.VersionedBytesStore;
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
 import org.apache.kafka.streams.state.VersionedRecord;
@@ -24,6 +28,12 @@ import org.apache.kafka.streams.state.VersionedRecord;
  * which accept Materialized<K, V, KeyValueStore<Bytes, byte[]>).
  */
 public class VersionedBytesStoreAdaptor implements VersionedBytesStore {
+    private static final Serde<ValueAndTimestamp<byte[]>> VALUE_AND_TIMESTAMP_SERDE
+        = new NullableValueAndTimestampSerde<>(new ByteArraySerde());
+    private static final Serializer<ValueAndTimestamp<byte[]>> VALUE_AND_TIMESTAMP_SERIALIZER
+        = VALUE_AND_TIMESTAMP_SERDE.serializer();
+    private static final Deserializer<ValueAndTimestamp<byte[]>> VALUE_AND_TIMESTAMP_DESERIALIZER
+        = VALUE_AND_TIMESTAMP_SERDE.deserializer();
 
     final VersionedKeyValueStore<Bytes, byte[]> inner;
 
@@ -32,12 +42,13 @@ public class VersionedBytesStoreAdaptor implements VersionedBytesStore {
     }
 
     @Override
-    public void put(Bytes key, byte[] valueAndTimestamp) {
-        final boolean isTombstone = VersionedBytesStoreValueFormatter.isTombstone(valueAndTimestamp);
+    public void put(Bytes key, byte[] rawValueAndTimestamp) {
+        final ValueAndTimestamp<byte[]> valueAndTimestamp
+            = VALUE_AND_TIMESTAMP_DESERIALIZER.deserialize(null, rawValueAndTimestamp);
         inner.put(
             key,
-            isTombstone ? null : VersionedBytesStoreValueFormatter.rawValue(valueAndTimestamp),
-            VersionedBytesStoreValueFormatter.timestamp(valueAndTimestamp)
+            valueAndTimestamp.value(),
+            valueAndTimestamp.timestamp()
         );
     }
 
@@ -45,14 +56,14 @@ public class VersionedBytesStoreAdaptor implements VersionedBytesStore {
     @Override
     public byte[] get(Bytes key) {
         final VersionedRecord<byte[]> versionedRecord = inner.get(key);
-        return VersionedBytesStoreValueFormatter.toReturnBytes(versionedRecord);
+        return toReturnBytes(versionedRecord);
     }
 
     // returns timestamp, bool, and value
     @Override
     public byte[] get(Bytes key, long timestampTo) {
         final VersionedRecord<byte[]> versionedRecord = inner.get(key, timestampTo);
-        return VersionedBytesStoreValueFormatter.toReturnBytes(versionedRecord);
+        return toReturnBytes(versionedRecord);
     }
 
     // returns timestamp, bool, and value
@@ -60,7 +71,7 @@ public class VersionedBytesStoreAdaptor implements VersionedBytesStore {
     public byte[] delete(Bytes key, long timestamp) {
         final VersionedRecord<byte[]> versionedRecord = inner.get(key, timestamp);
         inner.put(key, null, timestamp);
-        return VersionedBytesStoreValueFormatter.toReturnBytes(versionedRecord);
+        return toReturnBytes(versionedRecord);
     }
 
     // --- bunch of methods which are direct pass-throughs ---
@@ -158,4 +169,12 @@ public class VersionedBytesStoreAdaptor implements VersionedBytesStore {
         throw new UnsupportedOperationException("Versioned key-value stores do not support approximateNumEntries()");
     }
 
+    private static byte[] toReturnBytes(final VersionedRecord<byte[]> versionedRecord) {
+        if (versionedRecord == null) {
+            return null;
+        }
+        return VALUE_AND_TIMESTAMP_SERIALIZER.serialize(
+            null,
+            ValueAndTimestamp.make(versionedRecord.value(), versionedRecord.timestamp()));
+    }
 }

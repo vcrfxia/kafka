@@ -332,7 +332,7 @@ public final class StoreQueryUtils {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static <V> Function<byte[], V> getDeserializeValue(final StateSerdes<?, V> serdes,
-                                                              final StateStore wrapped) {
+                                                              final StateStore wrapped) { // TODO(vxia): this looks like it needs an update too
         final Serde<V> valueSerde = serdes.valueSerde();
         final boolean timestamped = WrappedStateStore.isTimestamped(wrapped);
         final Deserializer<V> deserializer;
