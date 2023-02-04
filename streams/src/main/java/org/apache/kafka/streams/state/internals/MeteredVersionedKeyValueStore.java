@@ -73,6 +73,17 @@ public class MeteredVersionedKeyValueStore<K, V>
     }
 
     @Override
+    public ValueAndTimestamp<V> delete(K key, long timestamp) {
+        Objects.requireNonNull(key, "key cannot be null");
+        try {
+            return maybeMeasureLatency(() -> outerValue(inner.delete(keyBytes(key), timestamp)), time, deleteSensor); // TODO: verify
+        } catch (final ProcessorStateException e) {
+            final String message = String.format(e.getMessage(), key);
+            throw new ProcessorStateException(message, e);
+        }
+    }
+
+    @Override
     public <R> QueryResult<R> query(final Query<R> query,
                                     final PositionBound positionBound,
                                     final QueryConfig config) {
@@ -81,6 +92,7 @@ public class MeteredVersionedKeyValueStore<K, V>
     }
 
     // TODO(vxia): understand this
+    @SuppressWarnings("unchecked")
     @Override
     protected Serde<ValueAndTimestamp<V>> prepareValueSerdeForStore(
         final Serde<ValueAndTimestamp<V>> valueSerde,

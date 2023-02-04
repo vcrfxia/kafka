@@ -69,8 +69,7 @@ public class VersionedBytesStoreAdaptor implements VersionedBytesStore {
     // returns timestamp, bool, and value
     @Override
     public byte[] delete(Bytes key, long timestamp) {
-        final VersionedRecord<byte[]> versionedRecord = inner.get(key, timestamp);
-        inner.put(key, null, timestamp);
+        final VersionedRecord<byte[]> versionedRecord = inner.delete(key, timestamp);
         return toReturnBytes(versionedRecord);
     }
 

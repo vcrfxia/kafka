@@ -61,6 +61,13 @@ class VersionedKeyValueStoreInternalAdaptor implements VersionedKeyValueStoreInt
         // previous code was confident that value never comes out as null, not sure how
     }
 
+    @Override
+    public ValueAndTimestamp<byte[]> delete(Bytes key, long timestamp) {
+        final byte[] rawValueAndTimestamp = inner.delete(key, timestamp);
+        return VALUE_AND_TIMESTAMP_DESERIALIZER.deserialize(null, rawValueAndTimestamp);
+        // TODO: does this need a check to ensure we never return non-null result with null value?
+        // previous code was confident that value never comes out as null, not sure how
+    }
 
     // --- bunch of other methods from TimestampedKeyValueStore, which are adapted similarly (implementations left out for brevity) ---
 

@@ -29,11 +29,7 @@ class VersionedKeyValueStoreAdaptor<K, V> implements VersionedKeyValueStore<K, V
 
     @Override
     public VersionedRecord<V> delete(K key, long timestamp) {
-        ValueAndTimestamp<V> valueAndTimestamp = inner.get(key, timestamp);
-        inner.put(
-            key,
-            ValueAndTimestamp.makeAllowNullable(null, timestamp)
-        );
+        ValueAndTimestamp<V> valueAndTimestamp = inner.delete(key, timestamp);
         return adaptValueAndTimestamp(valueAndTimestamp);
     }
 
