@@ -88,7 +88,7 @@ public class MeteredKeyValueStore<K, V>
     private Sensor prefixScanSensor;
     private Sensor flushSensor;
     private Sensor e2eLatencySensor;
-    private InternalProcessorContext context;
+    protected InternalProcessorContext context;
     private StreamsMetricsImpl streamsMetrics;
     private TaskId taskId;
 

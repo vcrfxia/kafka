@@ -61,7 +61,7 @@ public class VersionedKeyValueStoreBuilder<K, V>
         // but after the refactor to have wrapped store layers operate on the bytes store,
         // I think this might've been absorbed into MeteredVersionedKeyValueStore itself instead?
         return new VersionedKeyValueStoreAdaptor<>(
-            new MeteredVersionedKeyValueStore<>( // TODO: need an outer translation layer to create ValueAndTimestamp with null value on put()
+            new MeteredVersionedKeyValueStore<>(
                 maybeWrapLogging((VersionedBytesStore) store), // no caching layer for versioned stores
                 storeSupplier.metricsScope(),
                 time,

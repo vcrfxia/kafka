@@ -82,7 +82,7 @@ public class TimestampedKeyValueStoreBuilder<K, V>
             // TODO: there used to be a usage of VersionedKeyValueStoreInternalAdaptor here,
             // but after the refactor to have wrapped store layers operate on the bytes store,
             // I think this might've been absorbed into MeteredVersionedKeyValueStore itself instead?
-            return new MeteredVersionedKeyValueStore<>( // TODO: need an outer translation layer to create ValueAndTimestamp with null value on put()
+            return new MeteredVersionedKeyValueStore<>(
                 maybeWrapLoggingVersioned((VersionedBytesStore) store), // no caching layer for versioned stores
                 storeSupplier.metricsScope(),
                 time,

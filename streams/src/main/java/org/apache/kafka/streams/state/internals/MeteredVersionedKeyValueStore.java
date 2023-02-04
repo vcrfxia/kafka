@@ -52,6 +52,16 @@ public class MeteredVersionedKeyValueStore<K, V>
     }
 
     @Override
+    public void put(final K key, final ValueAndTimestamp<V> value) {
+        super.put(
+            key,
+            value == null // versioned stores require a timestamp associated with all puts, including tombstones/deletes
+                ? ValueAndTimestamp.makeAllowNullable(null, context.timestamp())
+                : value
+        );
+    }
+
+    @Override
     public ValueAndTimestamp<V> get(K key, long timestampTo) {
         Objects.requireNonNull(key, "key cannot be null");
         try {
