@@ -60,7 +60,6 @@ abstract class AbstractReadWriteDecorator<T extends StateStore, K, V> extends Wr
         throw new UnsupportedOperationException(ERROR_MESSAGE);
     }
 
-    // TODO(vxia): what is this for?
     static StateStore getReadWriteStore(final StateStore store) {
         if (store instanceof VersionedKeyValueStoreInternal) {
             return new VersionedKeyValueStoreReadWriteDecorator<>((VersionedKeyValueStoreInternal<?, ?>) store);

@@ -80,7 +80,7 @@ public class MeteredKeyValueStore<K, V>
     protected final Time time;
     protected Sensor putSensor;
     private Sensor putIfAbsentSensor;
-    protected Sensor getSensor; // TODO(vxia): should the timestamped version share the same sensor or have its own?
+    protected Sensor getSensor;
     protected Sensor deleteSensor;
     private Sensor putAllSensor;
     private Sensor allSensor;

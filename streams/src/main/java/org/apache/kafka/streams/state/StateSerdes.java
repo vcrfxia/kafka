@@ -21,6 +21,7 @@ import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.errors.StreamsException;
+import org.apache.kafka.streams.state.internals.NullableValueAndTimestampSerializer;
 import org.apache.kafka.streams.state.internals.ValueAndTimestampSerializer;
 
 import java.util.Objects;
@@ -190,7 +191,7 @@ public final class StateSerdes<K, V> {
      * @param value  the value to be serialized
      * @return       the serialized value
      */
-    public byte[] rawValue(final V value) { // TODO(vxia): this needs an update
+    public byte[] rawValue(final V value) {
         try {
             return valueSerde.serializer().serialize(topic, value);
         } catch (final ClassCastException e) {
@@ -199,6 +200,11 @@ public final class StateSerdes<K, V> {
             if (valueSerializer() instanceof ValueAndTimestampSerializer) {
                 serializerClass = ((ValueAndTimestampSerializer) valueSerializer()).valueSerializer.getClass();
                 valueClass = value == null ? "unknown because value is null" : ((ValueAndTimestamp) value).value().getClass().getName();
+            } else if (valueSerializer() instanceof NullableValueAndTimestampSerializer) {
+                serializerClass = ((NullableValueAndTimestampSerializer) valueSerializer()).valueSerializer.getClass();
+                valueClass = (value == null || ((ValueAndTimestamp) value).value() == null)
+                    ? "unknown because value is null"
+                    : ((ValueAndTimestamp) value).value().getClass().getName();
             } else {
                 serializerClass = valueSerializer().getClass();
                 valueClass = value == null ? "unknown because value is null" : value.getClass().getName();

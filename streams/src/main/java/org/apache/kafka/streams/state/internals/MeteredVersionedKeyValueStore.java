@@ -65,6 +65,7 @@ public class MeteredVersionedKeyValueStore<K, V>
     public ValueAndTimestamp<V> get(K key, long timestampTo) {
         Objects.requireNonNull(key, "key cannot be null");
         try {
+            // TODO(note): sharing the existing sensor here is a design choice. think it's better than introducing a new one
             return maybeMeasureLatency(() -> outerValue(inner.get(keyBytes(key), timestampTo)), time, getSensor); // TODO: verify
         } catch (final ProcessorStateException e) {
             final String message = String.format(e.getMessage(), key);
@@ -91,7 +92,6 @@ public class MeteredVersionedKeyValueStore<K, V>
         throw new UnsupportedOperationException("todo");
     }
 
-    // TODO(vxia): understand this
     @SuppressWarnings("unchecked")
     @Override
     protected Serde<ValueAndTimestamp<V>> prepareValueSerdeForStore(
@@ -101,7 +101,7 @@ public class MeteredVersionedKeyValueStore<K, V>
         if (valueSerde == null) {
             return new NullableValueAndTimestampSerde<>((Serde<V>) getter.valueSerde());
         } else {
-            return super.prepareValueSerdeForStore(valueSerde, getter); // TODO: what case hits this? is it safe?
+            return super.prepareValueSerdeForStore(valueSerde, getter);
         }
     }
 }

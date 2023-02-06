@@ -53,11 +53,13 @@ public class ChangeLoggingVersionedKeyValueBytesStore extends ChangeLoggingKeyVa
     void log(final Bytes key, final byte[] rawValueAndTimestamp) {
         final ValueAndTimestamp<byte[]> valueAndTimestamp
             = VALUE_AND_TIMESTAMP_DESERIALIZER.deserialize(null, rawValueAndTimestamp);
-        // TODO(vxia): don't think it's possible for the input to come in as null but should check
         log(key, valueAndTimestamp);
     }
 
     private void log(final Bytes key, final ValueAndTimestamp<byte[]> valueAndTimestamp) {
+        if (valueAndTimestamp == null) {
+            throw new IllegalStateException("Serialized bytes to put for versioned store cannot be null");
+        }
         context.logChange(
             name(),
             key,

@@ -332,7 +332,7 @@ public final class StoreQueryUtils {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static <V> Function<byte[], V> getDeserializeValue(final StateSerdes<?, V> serdes,
-                                                              final StateStore wrapped) { // TODO(vxia): this looks like it needs an update too
+                                                              final StateStore wrapped) { // TODO(note): even if we want to support IQv1 on versioned stores, this doesn't look like it actually needs an update because it seems to only be accounting for the automatic migration of non-timestamped to timestamped stores
         final Serde<V> valueSerde = serdes.valueSerde();
         final boolean timestamped = WrappedStateStore.isTimestamped(wrapped);
         final Deserializer<V> deserializer;

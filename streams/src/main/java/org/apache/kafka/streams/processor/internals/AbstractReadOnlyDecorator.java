@@ -28,6 +28,7 @@ import org.apache.kafka.streams.state.SessionStore;
 import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 import org.apache.kafka.streams.state.TimestampedWindowStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.streams.state.VersionedKeyValueStoreInternal;
 import org.apache.kafka.streams.state.WindowStore;
 import org.apache.kafka.streams.state.WindowStoreIterator;
 import org.apache.kafka.streams.state.internals.WrappedStateStore;
@@ -66,7 +67,9 @@ abstract class AbstractReadOnlyDecorator<T extends StateStore, K, V> extends Wra
     }
 
     static StateStore getReadOnlyStore(final StateStore global) {
-        if (global instanceof TimestampedKeyValueStore) {
+        if (global instanceof VersionedKeyValueStoreInternal) {
+            return new VersionedKeyValueStoreReadOnlyDecorator<>((VersionedKeyValueStoreInternal<?, ?>) global);
+        } if (global instanceof TimestampedKeyValueStore) {
             return new TimestampedKeyValueStoreReadOnlyDecorator<>((TimestampedKeyValueStore<?, ?>) global);
         } else if (global instanceof KeyValueStore) {
             return new KeyValueStoreReadOnlyDecorator<>((KeyValueStore<?, ?>) global);
@@ -81,11 +84,11 @@ abstract class AbstractReadOnlyDecorator<T extends StateStore, K, V> extends Wra
         }
     }
 
-    static class KeyValueStoreReadOnlyDecorator<K, V>
-        extends AbstractReadOnlyDecorator<KeyValueStore<K, V>, K, V>
+    static class KeyValueStoreReadOnlyDecorator<T extends KeyValueStore<K, V>, K, V>
+        extends AbstractReadOnlyDecorator<T, K, V>
         implements KeyValueStore<K, V> {
 
-        private KeyValueStoreReadOnlyDecorator(final KeyValueStore<K, V> inner) {
+        private KeyValueStoreReadOnlyDecorator(final T inner) {
             super(inner);
         }
 
@@ -151,11 +154,30 @@ abstract class AbstractReadOnlyDecorator<T extends StateStore, K, V> extends Wra
     }
 
     static class TimestampedKeyValueStoreReadOnlyDecorator<K, V>
-        extends KeyValueStoreReadOnlyDecorator<K, ValueAndTimestamp<V>>
+        extends KeyValueStoreReadOnlyDecorator<TimestampedKeyValueStore<K, V>, K, ValueAndTimestamp<V>>
         implements TimestampedKeyValueStore<K, V> {
 
         private TimestampedKeyValueStoreReadOnlyDecorator(final TimestampedKeyValueStore<K, V> inner) {
             super(inner);
+        }
+    }
+
+    static class VersionedKeyValueStoreReadOnlyDecorator<K, V>
+        extends KeyValueStoreReadOnlyDecorator<VersionedKeyValueStoreInternal<K, V>, K, ValueAndTimestamp<V>>
+        implements VersionedKeyValueStoreInternal<K, V> {
+
+        private VersionedKeyValueStoreReadOnlyDecorator(final VersionedKeyValueStoreInternal<K, V> inner) {
+            super(inner);
+        }
+
+        @Override
+        public ValueAndTimestamp<V> get(K key, long timestampTo) {
+            return wrapped().get(key, timestampTo);
+        }
+
+        @Override
+        public ValueAndTimestamp<V> delete(K key, long timestamp) {
+            throw new UnsupportedOperationException(ERROR_MESSAGE);
         }
     }
 
