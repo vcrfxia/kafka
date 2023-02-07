@@ -35,9 +35,11 @@ import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.TimestampedBytesStore;
 import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.streams.state.VersionedBytesStore;
 
 import java.util.List;
 import java.util.Objects;
+import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
 
 public class TimestampedKeyValueStoreBuilder<K, V>
     extends AbstractStoreBuilder<K, ValueAndTimestamp<V>, TimestampedKeyValueStore<K, V>> {
@@ -51,7 +53,11 @@ public class TimestampedKeyValueStoreBuilder<K, V>
         super(
             storeSupplier.name(),
             keySerde,
-            valueSerde == null ? null : new ValueAndTimestampSerde<>(valueSerde),
+            valueSerde == null
+                ? null
+                : storeSupplier instanceof VersionedBytesStoreSupplier
+                    ? new NullableValueAndTimestampSerde<>(valueSerde)
+                    : new ValueAndTimestampSerde<>(valueSerde),
             time);
         Objects.requireNonNull(storeSupplier, "storeSupplier can't be null");
         Objects.requireNonNull(storeSupplier.metricsScope(), "storeSupplier's metricsScope can't be null");
@@ -68,12 +74,33 @@ public class TimestampedKeyValueStoreBuilder<K, V>
                 store = new InMemoryTimestampedKeyValueStoreMarker(store);
             }
         }
-        return new MeteredTimestampedKeyValueStore<>(
-            maybeWrapCaching(maybeWrapLogging(store)),
-            storeSupplier.metricsScope(),
-            time,
-            keySerde,
-            valueSerde);
+
+        if (isVersionedStoreBuilder()) {
+            if (!(store instanceof VersionedBytesStore)) {
+                throw new IllegalStateException("VersionedBytesStoreSupplier.get() must return an instance of VersionedBytesStore");
+            }
+            return new MeteredVersionedKeyValueStore<>(
+                maybeWrapLoggingVersioned((VersionedBytesStore) store), // no caching layer for versioned stores
+                storeSupplier.metricsScope(),
+                time,
+                keySerde,
+                valueSerde);
+        } else {
+            return new MeteredTimestampedKeyValueStore<>(
+                maybeWrapCaching(maybeWrapLogging(store)),
+                storeSupplier.metricsScope(),
+                time,
+                keySerde,
+                valueSerde);
+        }
+    }
+
+    /**
+     * @return whether the key-value store returned by {@link #build()} is a versioned key-value
+     *         store (represented as {@link VersionedKeyValueStoreInternal}).
+     */
+    public boolean isVersionedStoreBuilder() {
+        return storeSupplier instanceof VersionedBytesStoreSupplier;
     }
 
     private KeyValueStore<Bytes, byte[]> maybeWrapCaching(final KeyValueStore<Bytes, byte[]> inner) {
@@ -88,6 +115,13 @@ public class TimestampedKeyValueStoreBuilder<K, V>
             return inner;
         }
         return new ChangeLoggingTimestampedKeyValueBytesStore(inner);
+    }
+
+    private VersionedBytesStore maybeWrapLoggingVersioned(final VersionedBytesStore inner) {
+        if (!enableLogging) {
+            return inner;
+        }
+        return new ChangeLoggingVersionedKeyValueBytesStore(inner);
     }
 
     private final static class InMemoryTimestampedKeyValueStoreMarker
