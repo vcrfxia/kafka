@@ -22,6 +22,7 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.streams.state.KeyValueStore;
 
 import java.util.Objects;
+import org.apache.kafka.streams.state.StoreBuilder;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.apache.kafka.streams.state.VersionedBytesStore;
 import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
@@ -64,6 +65,8 @@ public class VersionedKeyValueStoreBuilder<K, V>
             keySerde,
             valueAndTimestampSerde);
     }
+
+    // TODO: should we throw if withCachingEnabled() is called?
 
     private VersionedBytesStore maybeWrapLogging(final VersionedBytesStore inner) {
         if (!enableLogging) {
