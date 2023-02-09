@@ -63,7 +63,7 @@ public class VersionedKeyValueToBytesStoreAdapter implements VersionedBytesStore
     }
 
     @Override
-    public void put(Bytes key, byte[] rawValueAndTimestamp) {
+    public void put(final Bytes key, final byte[] rawValueAndTimestamp) {
         final ValueAndTimestamp<byte[]> valueAndTimestamp
             = VALUE_AND_TIMESTAMP_DESERIALIZER.deserialize(null, rawValueAndTimestamp);
         inner.put(
@@ -74,19 +74,19 @@ public class VersionedKeyValueToBytesStoreAdapter implements VersionedBytesStore
     }
 
     @Override
-    public byte[] get(Bytes key) {
+    public byte[] get(final Bytes key) {
         final VersionedRecord<byte[]> versionedRecord = inner.get(key);
         return serializeAsBytes(versionedRecord);
     }
 
     @Override
-    public byte[] get(Bytes key, long asOfTimestamp) {
+    public byte[] get(final Bytes key, final long asOfTimestamp) {
         final VersionedRecord<byte[]> versionedRecord = inner.get(key, asOfTimestamp);
         return serializeAsBytes(versionedRecord);
     }
 
     @Override
-    public byte[] delete(Bytes key, long timestamp) {
+    public byte[] delete(final Bytes key, final long timestamp) {
         final VersionedRecord<byte[]> versionedRecord = inner.delete(key, timestamp);
         return serializeAsBytes(versionedRecord);
     }
@@ -98,12 +98,12 @@ public class VersionedKeyValueToBytesStoreAdapter implements VersionedBytesStore
 
     @Deprecated
     @Override
-    public void init(ProcessorContext context, StateStore root) {
+    public void init(final ProcessorContext context, final StateStore root) {
         inner.init(context, root);
     }
 
     @Override
-    public void init(StateStoreContext context, StateStore root) {
+    public void init(final StateStoreContext context, final StateStore root) {
         inner.init(context, root);
     }
 
@@ -128,7 +128,7 @@ public class VersionedKeyValueToBytesStoreAdapter implements VersionedBytesStore
     }
 
     @Override
-    public <R> QueryResult<R> query(Query<R> query, PositionBound positionBound, QueryConfig config) {
+    public <R> QueryResult<R> query(final Query<R> query, final PositionBound positionBound, final QueryConfig config) {
         return inner.query(query, positionBound, config);
     }
 
@@ -138,27 +138,27 @@ public class VersionedKeyValueToBytesStoreAdapter implements VersionedBytesStore
     }
 
     @Override
-    public byte[] putIfAbsent(Bytes key, byte[] value) {
+    public byte[] putIfAbsent(final Bytes key, final byte[] value) {
         throw new UnsupportedOperationException("Versioned key-value stores do not support putIfAbsent(key, value)");
     }
 
     @Override
-    public void putAll(List<KeyValue<Bytes, byte[]>> entries) {
+    public void putAll(final List<KeyValue<Bytes, byte[]>> entries) {
         throw new UnsupportedOperationException("Versioned key-value stores do not support putAll(entries)");
     }
 
     @Override
-    public byte[] delete(Bytes key) {
+    public byte[] delete(final Bytes key) {
         throw new UnsupportedOperationException("Versioned key-value stores do not support delete(key)");
     }
 
     @Override
-    public KeyValueIterator<Bytes, byte[]> range(Bytes from, Bytes to) {
+    public KeyValueIterator<Bytes, byte[]> range(final Bytes from, final Bytes to) {
         throw new UnsupportedOperationException("Versioned key-value stores do not support range(from, to)");
     }
 
     @Override
-    public KeyValueIterator<Bytes, byte[]> reverseRange(Bytes from, Bytes to) {
+    public KeyValueIterator<Bytes, byte[]> reverseRange(final Bytes from, final Bytes to) {
         throw new UnsupportedOperationException("Versioned key-value stores do not support reverseRange(from, to)");
     }
 
@@ -173,7 +173,7 @@ public class VersionedKeyValueToBytesStoreAdapter implements VersionedBytesStore
     }
 
     @Override
-    public <PS extends Serializer<P>, P> KeyValueIterator<Bytes, byte[]> prefixScan(P prefix, PS prefixKeySerializer) {
+    public <PS extends Serializer<P>, P> KeyValueIterator<Bytes, byte[]> prefixScan(final P prefix, final PS prefixKeySerializer) {
         throw new UnsupportedOperationException("Versioned key-value stores do not support prefixScan(prefix, prefixKeySerializer)");
     }
 

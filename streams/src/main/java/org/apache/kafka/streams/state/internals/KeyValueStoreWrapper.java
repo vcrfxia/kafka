@@ -100,7 +100,7 @@ public class KeyValueStoreWrapper<K, V> implements StateStore {
 
     @Deprecated
     @Override
-    public void init(org.apache.kafka.streams.processor.ProcessorContext context, StateStore root) {
+    public void init(final org.apache.kafka.streams.processor.ProcessorContext context, final StateStore root) {
         if (timestampedStore != null) {
             timestampedStore.init(context, root);
             return;
@@ -113,7 +113,7 @@ public class KeyValueStoreWrapper<K, V> implements StateStore {
     }
 
     @Override
-    public void init(StateStoreContext context, StateStore root) {
+    public void init(final StateStoreContext context, final StateStore root) {
         if (timestampedStore != null) {
             timestampedStore.init(context, root);
             return;
@@ -174,7 +174,7 @@ public class KeyValueStoreWrapper<K, V> implements StateStore {
     }
 
     @Override
-    public <R> QueryResult<R> query(Query<R> query, PositionBound positionBound, QueryConfig config) {
+    public <R> QueryResult<R> query(final Query<R> query, final PositionBound positionBound, final QueryConfig config) {
         if (timestampedStore != null) {
             return timestampedStore.query(query, positionBound, config);
         }

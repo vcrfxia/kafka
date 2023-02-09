@@ -166,22 +166,22 @@ abstract class AbstractReadWriteDecorator<T extends StateStore, K, V> extends Wr
         }
 
         @Override
-        public void put(K key, V value, long timestamp) {
+        public void put(final K key, final V value, final long timestamp) {
             wrapped().put(key, value, timestamp);
         }
 
         @Override
-        public VersionedRecord<V> delete(K key, long timestamp) {
+        public VersionedRecord<V> delete(final K key, final long timestamp) {
             return wrapped().delete(key, timestamp);
         }
 
         @Override
-        public VersionedRecord<V> get(K key) {
+        public VersionedRecord<V> get(final K key) {
             return wrapped().get(key);
         }
 
         @Override
-        public VersionedRecord<V> get(K key, long asOfTimestamp) {
+        public VersionedRecord<V> get(final K key, final long asOfTimestamp) {
             return wrapped().get(key, asOfTimestamp);
         }
     }

@@ -42,12 +42,12 @@ public class ChangeLoggingVersionedKeyValueBytesStore extends ChangeLoggingKeyVa
     }
 
     @Override
-    public byte[] get(Bytes key, long asOfTimestamp) {
+    public byte[] get(final Bytes key, final long asOfTimestamp) {
         return inner.get(key, asOfTimestamp);
     }
 
     @Override
-    public byte[] delete(Bytes key, long timestamp) {
+    public byte[] delete(final Bytes key, final long timestamp) {
         final byte[] oldValue = inner.delete(key, timestamp);
         log(key, ValueAndTimestamp.makeAllowNullable(null, timestamp));
         return oldValue;

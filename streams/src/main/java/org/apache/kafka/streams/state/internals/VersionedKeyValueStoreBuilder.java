@@ -49,7 +49,7 @@ public class VersionedKeyValueStoreBuilder<K, V>
 
     @Override
     public VersionedKeyValueStore<K, V> build() {
-        KeyValueStore<Bytes, byte[]> store = storeSupplier.get();
+        final KeyValueStore<Bytes, byte[]> store = storeSupplier.get();
         if (!(store instanceof VersionedBytesStore)) {
             throw new IllegalStateException("VersionedBytesStoreSupplier.get() must return an instance of VersionedBytesStore");
         }

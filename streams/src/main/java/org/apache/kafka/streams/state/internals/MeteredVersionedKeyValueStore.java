@@ -64,12 +64,12 @@ public class MeteredVersionedKeyValueStore<K, V> implements VersionedKeyValueSto
     }
 
     @Override
-    public void put(K key, V value, long timestamp) {
+    public void put(final K key, final V value, final long timestamp) {
         internal.put(key, ValueAndTimestamp.makeAllowNullable(value, timestamp));
     }
 
     @Override
-    public VersionedRecord<V> delete(K key, long timestamp) {
+    public VersionedRecord<V> delete(final K key, final long timestamp) {
         final ValueAndTimestamp<V> valueAndTimestamp = internal.delete(key, timestamp);
         return valueAndTimestamp == null
             ? null
@@ -77,7 +77,7 @@ public class MeteredVersionedKeyValueStore<K, V> implements VersionedKeyValueSto
     }
 
     @Override
-    public VersionedRecord<V> get(K key) {
+    public VersionedRecord<V> get(final K key) {
         final ValueAndTimestamp<V> valueAndTimestamp = internal.get(key);
         return valueAndTimestamp == null
             ? null
@@ -85,7 +85,7 @@ public class MeteredVersionedKeyValueStore<K, V> implements VersionedKeyValueSto
     }
 
     @Override
-    public VersionedRecord<V> get(K key, long asOfTimestamp) {
+    public VersionedRecord<V> get(final K key, final long asOfTimestamp) {
         final ValueAndTimestamp<V> valueAndTimestamp = internal.get(key, asOfTimestamp);
         return valueAndTimestamp == null
             ? null
@@ -99,12 +99,12 @@ public class MeteredVersionedKeyValueStore<K, V> implements VersionedKeyValueSto
 
     @Deprecated
     @Override
-    public void init(ProcessorContext context, StateStore root) {
+    public void init(final ProcessorContext context, final StateStore root) {
         internal.init(context, root);
     }
 
     @Override
-    public void init(StateStoreContext context, StateStore root) {
+    public void init(final StateStoreContext context, final StateStore root) {
         internal.init(context, root);
     }
 
@@ -129,7 +129,7 @@ public class MeteredVersionedKeyValueStore<K, V> implements VersionedKeyValueSto
     }
 
     @Override
-    public <R> QueryResult<R> query(Query<R> query, PositionBound positionBound, QueryConfig config) {
+    public <R> QueryResult<R> query(final Query<R> query, final PositionBound positionBound, final QueryConfig config) {
         return internal.query(query, positionBound, config);
     }
 
@@ -168,7 +168,7 @@ public class MeteredVersionedKeyValueStore<K, V> implements VersionedKeyValueSto
         }
 
         @Override
-        public ValueAndTimestamp<V> get(K key, long asOfTimestamp) {
+        public ValueAndTimestamp<V> get(final K key, final long asOfTimestamp) {
             Objects.requireNonNull(key, "key cannot be null");
             try {
                 return maybeMeasureLatency(() -> outerValue(inner.get(keyBytes(key), asOfTimestamp)), time, getSensor);
@@ -179,7 +179,7 @@ public class MeteredVersionedKeyValueStore<K, V> implements VersionedKeyValueSto
         }
 
         @Override
-        public ValueAndTimestamp<V> delete(K key, long timestamp) {
+        public ValueAndTimestamp<V> delete(final K key, final long timestamp) {
             Objects.requireNonNull(key, "key cannot be null");
             try {
                 return maybeMeasureLatency(() -> outerValue(inner.delete(keyBytes(key), timestamp)), time, deleteSensor);
