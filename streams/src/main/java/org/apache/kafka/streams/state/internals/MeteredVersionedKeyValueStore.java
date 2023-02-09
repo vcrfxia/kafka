@@ -193,15 +193,7 @@ public class MeteredVersionedKeyValueStore<K, V> implements VersionedKeyValueSto
         public <R> QueryResult<R> query(final Query<R> query,
                                         final PositionBound positionBound,
                                         final QueryConfig config) {
-            final long start = config.isCollectExecutionInfo() ? time.nanoseconds() : -1L;
-            // this method implements a direct pass-through for now, rather than including the extra
-            // serde support in MeteredKeyValueStore -- TODO(vxia): is this what we want?
-            final QueryResult<R> result = wrapped().query(query, positionBound, config);
-            if (config.isCollectExecutionInfo()) {
-                result.addExecutionInfo(
-                    "Handled in " + getClass() + " in " + (time.nanoseconds() - start) + "ns");
-            }
-            return result;
+            throw new UnsupportedOperationException("todo");
         }
 
         @SuppressWarnings("unchecked")
