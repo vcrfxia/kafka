@@ -52,7 +52,9 @@ public class NullableValueAndTimestampSerde<V> extends WrappingNullableSerde<Val
             @Override
             public byte[] serialize(final String topic, final Boolean data) {
                 if (data == null) {
-                    return null;
+                    // actually want to return null here but spotbugs won't allow deserialization so
+                    // we fail here during serialization too for consistency
+                    throw new SerializationException("BooleanSerializer does not support null");
                 }
 
                 return new byte[] {
@@ -65,7 +67,8 @@ public class NullableValueAndTimestampSerde<V> extends WrappingNullableSerde<Val
             @Override
             public Boolean deserialize(final String topic, final byte[] data) {
                 if (data == null) {
-                    return null;
+                    // actually want to return null here but spotbugs won't allow it (NP_BOOLEAN_RETURN_NULL)
+                    throw new SerializationException("BooleanDeserializer does not support null bytes");
                 }
                 if (data.length != 1) {
                     throw new SerializationException("Size of data received by BooleanDeserializer is not 1");
