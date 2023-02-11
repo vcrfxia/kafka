@@ -36,8 +36,7 @@ public class NullableValueAndTimestampDeserializer<V> implements WrappingNullabl
     private final Deserializer<Boolean> booleanDeserializer;
 
     NullableValueAndTimestampDeserializer(final Deserializer<V> valueDeserializer) {
-        Objects.requireNonNull(valueDeserializer);
-        this.valueDeserializer = valueDeserializer;
+        this.valueDeserializer = Objects.requireNonNull(valueDeserializer);
         timestampDeserializer = new LongDeserializer();
         booleanDeserializer = new BooleanDeserializer();
     }

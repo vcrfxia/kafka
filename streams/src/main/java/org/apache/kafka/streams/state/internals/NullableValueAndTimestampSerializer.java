@@ -37,8 +37,7 @@ public class NullableValueAndTimestampSerializer<V> implements WrappingNullableS
     private final Serializer<Boolean> booleanSerializer;
 
     NullableValueAndTimestampSerializer(final Serializer<V> valueSerializer) {
-        Objects.requireNonNull(valueSerializer);
-        this.valueSerializer = valueSerializer;
+        this.valueSerializer = Objects.requireNonNull(valueSerializer);
         timestampSerializer = new LongSerializer();
         booleanSerializer = new BooleanSerializer();
     }

@@ -64,6 +64,9 @@ public class VersionedKeyValueToBytesStoreAdapter implements VersionedBytesStore
 
     @Override
     public void put(final Bytes key, final byte[] rawValueAndTimestamp) {
+        if (rawValueAndTimestamp == null) {
+            throw new IllegalArgumentException("Put to versioned store must always include timestamp, including for tombstones.");
+        }
         final ValueAndTimestamp<byte[]> valueAndTimestamp
             = VALUE_AND_TIMESTAMP_DESERIALIZER.deserialize(null, rawValueAndTimestamp);
         inner.put(
