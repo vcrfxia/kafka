@@ -66,7 +66,10 @@ public class VersionedKeyValueStoreBuilder<K, V>
             valueAndTimestampSerde);
     }
 
-    // TODO: should we throw if withCachingEnabled() is called?
+    @Override
+    public StoreBuilder<VersionedKeyValueStore<K, V>> withCachingEnabled() {
+        throw new IllegalStateException("Versioned stores do not support caching");
+    }
 
     private VersionedBytesStore maybeWrapLogging(final VersionedBytesStore inner) {
         if (!enableLogging) {

@@ -70,7 +70,8 @@ public class TimestampedKeyValueStoreMaterializer<K, V> {
             builder.withLoggingDisabled();
         }
 
-        if (materialized.cachingEnabled()) {
+        // versioned stores do not support caching
+        if (materialized.cachingEnabled() && !(builder instanceof VersionedKeyValueStoreBuilder)) {
             builder.withCachingEnabled();
         }
         return builder;
