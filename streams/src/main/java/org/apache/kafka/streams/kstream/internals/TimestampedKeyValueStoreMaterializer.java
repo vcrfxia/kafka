@@ -23,8 +23,13 @@ import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.StoreBuilder;
 import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
+import org.apache.kafka.streams.state.internals.TimestampedKeyValueStoreBuilder;
 import org.apache.kafka.streams.state.internals.VersionedKeyValueStoreBuilder;
 
+/**
+ * Materializes a key-value store as either a {@link TimestampedKeyValueStoreBuilder} or a
+ * {@link VersionedKeyValueStoreBuilder} depending on whether the store is versioned or not.
+ */
 public class TimestampedKeyValueStoreMaterializer<K, V> {
     private final MaterializedInternal<K, V, KeyValueStore<Bytes, byte[]>> materialized;
 
