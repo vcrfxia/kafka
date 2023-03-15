@@ -59,6 +59,7 @@ import org.apache.kafka.streams.query.RangeQuery;
 import org.apache.kafka.streams.query.StateQueryRequest;
 import org.apache.kafka.streams.query.StateQueryResult;
 import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
 import org.apache.kafka.streams.state.VersionedKeyValueStore;
 import org.apache.kafka.streams.state.VersionedRecord;
@@ -131,11 +132,10 @@ public class VersionedKeyValueStoreIntegrationTest {
 
         streamsBuilder
             .addStateStore(
-                new VersionedKeyValueStoreBuilder<>(
-                    new RocksDbVersionedKeyValueBytesStoreSupplier(STORE_NAME, HISTORY_RETENTION),
+                Stores.versionedKeyValueStoreBuilder(
+                    Stores.persistentVersionedKeyValueStore(STORE_NAME, Duration.ofMillis(HISTORY_RETENTION)),
                     Serdes.Integer(),
-                    Serdes.String(),
-                    Time.SYSTEM
+                    Serdes.String()
                 )
             )
             .stream(inputStream, Consumed.with(Serdes.Integer(), Serdes.String()))
@@ -176,11 +176,10 @@ public class VersionedKeyValueStoreIntegrationTest {
 
         streamsBuilder
             .addStateStore(
-                new VersionedKeyValueStoreBuilder<>(
-                    new RocksDbVersionedKeyValueBytesStoreSupplier(STORE_NAME, HISTORY_RETENTION),
+                Stores.versionedKeyValueStoreBuilder(
+                    Stores.persistentVersionedKeyValueStore(STORE_NAME, Duration.ofMillis(HISTORY_RETENTION)),
                     Serdes.Integer(),
-                    Serdes.String(),
-                    Time.SYSTEM
+                    Serdes.String()
                 )
             )
             .stream(inputStream, Consumed.with(Serdes.Integer(), Serdes.String()))
@@ -216,11 +215,10 @@ public class VersionedKeyValueStoreIntegrationTest {
 
         streamsBuilder
             .addStateStore(
-                new VersionedKeyValueStoreBuilder<>(
-                    new RocksDbVersionedKeyValueBytesStoreSupplier(STORE_NAME, HISTORY_RETENTION),
+                Stores.versionedKeyValueStoreBuilder(
+                    Stores.persistentVersionedKeyValueStore(STORE_NAME, Duration.ofMillis(HISTORY_RETENTION)),
                     Serdes.Integer(),
-                    Serdes.String(),
-                    Time.SYSTEM
+                    Serdes.String()
                 )
             )
             .stream(inputStream, Consumed.with(Serdes.Integer(), Serdes.String()))
@@ -259,11 +257,10 @@ public class VersionedKeyValueStoreIntegrationTest {
 
         streamsBuilder
             .addStateStore(
-                new VersionedKeyValueStoreBuilder<>(
-                    new RocksDbVersionedKeyValueBytesStoreSupplier(STORE_NAME, HISTORY_RETENTION),
+                Stores.versionedKeyValueStoreBuilder(
+                    Stores.persistentVersionedKeyValueStore(STORE_NAME, Duration.ofMillis(HISTORY_RETENTION)),
                     Serdes.Integer(),
-                    Serdes.String(),
-                    Time.SYSTEM
+                    Serdes.String()
                 )
             )
             .stream(inputStream, Consumed.with(Serdes.Integer(), Serdes.String()))
@@ -298,11 +295,10 @@ public class VersionedKeyValueStoreIntegrationTest {
 
         streamsBuilder
             .addStateStore(
-                new VersionedKeyValueStoreBuilder<>(
+                Stores.versionedKeyValueStoreBuilder(
                     new CustomIQv2VersionedStoreSupplier(),
                     Serdes.Integer(),
-                    Serdes.String(),
-                    Time.SYSTEM
+                    Serdes.String()
                 )
             )
             .stream(inputStream, Consumed.with(Serdes.Integer(), Serdes.String()))
@@ -338,7 +334,7 @@ public class VersionedKeyValueStoreIntegrationTest {
                 globalTableTopic,
                 Consumed.with(Serdes.Integer(), Serdes.String()),
                 Materialized
-                    .<Integer, String>as(new RocksDbVersionedKeyValueBytesStoreSupplier(STORE_NAME, HISTORY_RETENTION))
+                    .<Integer, String>as(Stores.persistentVersionedKeyValueStore(STORE_NAME, Duration.ofMillis(HISTORY_RETENTION)))
                     .withKeySerde(Serdes.Integer())
                     .withValueSerde(Serdes.String())
             );

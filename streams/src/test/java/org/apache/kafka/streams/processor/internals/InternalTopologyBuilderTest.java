@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.processor.internals;
 
+import java.time.Duration;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.serialization.Serde;
@@ -909,11 +910,10 @@ public class InternalTopologyBuilderTest {
         builder.addSource(null, "source", null, null, null, "topic");
         builder.addProcessor("processor", new MockApiProcessorSupplier<>(), "source");
         builder.addStateStore(
-            new VersionedKeyValueStoreBuilder<>(
-                new RocksDbVersionedKeyValueBytesStoreSupplier("vstore", 60_000L),
+            Stores.versionedKeyValueStoreBuilder(
+                Stores.persistentVersionedKeyValueStore("vstore", Duration.ofMillis(60_000L)),
                 Serdes.String(),
-                Serdes.String(),
-                new MockTime()
+                Serdes.String()
             ),
             "processor"
         );

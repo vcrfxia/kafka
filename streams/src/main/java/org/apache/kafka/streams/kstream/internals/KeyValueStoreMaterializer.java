@@ -61,11 +61,10 @@ public class KeyValueStoreMaterializer<K, V> {
 
         final StoreBuilder<?> builder;
         if (supplier instanceof VersionedBytesStoreSupplier) {
-            builder = new VersionedKeyValueStoreBuilder<>(
+            builder = Stores.versionedKeyValueStoreBuilder(
                 (VersionedBytesStoreSupplier) supplier,
                 materialized.keySerde(),
-                materialized.valueSerde(),
-                Time.SYSTEM);
+                materialized.valueSerde());
         } else {
             builder = Stores.timestampedKeyValueStoreBuilder(
                 supplier,
