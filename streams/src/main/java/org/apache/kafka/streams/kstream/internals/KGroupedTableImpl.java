@@ -29,12 +29,14 @@ import org.apache.kafka.streams.kstream.internals.graph.GroupedTableOperationRep
 import org.apache.kafka.streams.kstream.internals.graph.ProcessorParameters;
 import org.apache.kafka.streams.kstream.internals.graph.StatefulProcessorNode;
 import org.apache.kafka.streams.kstream.internals.graph.GraphNode;
+import org.apache.kafka.streams.kstream.internals.graph.TableAggregateNode;
 import org.apache.kafka.streams.processor.api.ProcessorSupplier;
 import org.apache.kafka.streams.state.KeyValueStore;
 
 import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
+import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
 
 /**
  * The implementation class of {@link KGroupedTable}.
@@ -87,14 +89,15 @@ public class KGroupedTableImpl<K, V> extends AbstractStream<K, V> implements KGr
         // the passed in StreamsGraphNode must be the parent of the repartition node
         builder.addGraphNode(this.graphNode, repartitionGraphNode);
 
-        final StatefulProcessorNode statefulProcessorNode = new StatefulProcessorNode<>(
+        final TableAggregateNode tableAggregateNode = new TableAggregateNode<>(
             funcName,
             new ProcessorParameters<>(aggregateSupplier, funcName),
             new KeyValueStoreMaterializer<>(materialized).materialize()
         );
+        tableAggregateNode.setOutputVersioned(materialized.storeSupplier() instanceof VersionedBytesStoreSupplier);
 
         // now the repartition node must be the parent of the StateProcessorNode
-        builder.addGraphNode(repartitionGraphNode, statefulProcessorNode);
+        builder.addGraphNode(repartitionGraphNode, tableAggregateNode);
 
         // return the KTable representation with the intermediate topic as the sources
         return new KTableImpl<>(funcName,
@@ -103,7 +106,7 @@ public class KGroupedTableImpl<K, V> extends AbstractStream<K, V> implements KGr
                                 Collections.singleton(sourceName),
                                 materialized.queryableStoreName(),
                                 aggregateSupplier,
-                                statefulProcessorNode,
+                                tableAggregateNode,
                                 builder);
     }
 

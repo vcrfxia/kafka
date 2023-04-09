@@ -35,11 +35,15 @@ import org.apache.kafka.streams.kstream.internals.graph.StateStoreNode;
 import org.apache.kafka.streams.kstream.internals.graph.StreamSourceNode;
 import org.apache.kafka.streams.kstream.internals.graph.GraphNode;
 import org.apache.kafka.streams.kstream.internals.graph.StreamStreamJoinNode;
+import org.apache.kafka.streams.kstream.internals.graph.TableAggregateNode;
+import org.apache.kafka.streams.kstream.internals.graph.TableFilterNode;
 import org.apache.kafka.streams.kstream.internals.graph.TableSourceNode;
+import org.apache.kafka.streams.kstream.internals.graph.VersionedSemanticsGraphNode;
 import org.apache.kafka.streams.kstream.internals.graph.WindowedStreamProcessorNode;
 import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.StoreBuilder;
+import org.apache.kafka.streams.state.VersionedBytesStoreSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -71,6 +75,7 @@ public class InternalStreamsBuilder implements InternalNameProvider {
     private final LinkedHashMap<GraphNode, LinkedHashSet<OptimizableRepartitionNode<?, ?>>> keyChangingOperationsToOptimizableRepartitionNodes = new LinkedHashMap<>();
     private final LinkedHashSet<GraphNode> mergeNodes = new LinkedHashSet<>();
     private final LinkedHashSet<GraphNode> tableSourceNodes = new LinkedHashSet<>();
+    private final LinkedHashSet<GraphNode> versionedSemanticsNodes = new LinkedHashSet<>();
 
     private static final String TOPOLOGY_ROOT = "root";
     private static final Logger LOG = LoggerFactory.getLogger(InternalStreamsBuilder.class);
@@ -142,6 +147,7 @@ public class InternalStreamsBuilder implements InternalNameProvider {
             .withMaterializedInternal(materialized)
             .withProcessorParameters(processorParameters)
             .build();
+        tableSourceNode.setOutputVersioned(materialized.storeSupplier() instanceof VersionedBytesStoreSupplier);
 
         addGraphNode(root, tableSourceNode);
 
@@ -234,6 +240,7 @@ public class InternalStreamsBuilder implements InternalNameProvider {
         Objects.requireNonNull(child, "child node can't be null");
         parent.addChild(child);
         maybeAddNodeForOptimizationMetadata(child);
+        maybeAddNodeForVersionedSemanticsMetadata(child);
     }
 
     void addGraphNode(final Collection<GraphNode> parents,
@@ -273,6 +280,12 @@ public class InternalStreamsBuilder implements InternalNameProvider {
         }
     }
 
+    private void maybeAddNodeForVersionedSemanticsMetadata(final GraphNode node) {
+        if (node instanceof VersionedSemanticsGraphNode) {
+            versionedSemanticsNodes.add(node);
+        }
+    }
+
     // use this method for testing only
     public void buildAndOptimizeTopology() {
         buildAndOptimizeTopology(null);
@@ -281,6 +294,7 @@ public class InternalStreamsBuilder implements InternalNameProvider {
     public void buildAndOptimizeTopology(final Properties props) {
         mergeDuplicateSourceNodes();
         optimizeTopology(props);
+        enableVersionedSemantics();
 
         final PriorityQueue<GraphNode> graphNodePriorityQueue = new PriorityQueue<>(5, Comparator.comparing(GraphNode::buildPriority));
 
@@ -595,6 +609,31 @@ public class InternalStreamsBuilder implements InternalNameProvider {
         }
 
         return new GroupedInternal<>(Grouped.with(keySerde, valueSerde));
+    }
+
+    private void enableVersionedSemantics() {
+        versionedSemanticsNodes.forEach(node -> ((VersionedSemanticsGraphNode) node).enableVersionedSemantics(isVersionedUpstream(node)));
+    }
+
+    private boolean isVersionedUpstream(final GraphNode startSeekingNode) {
+        if (root.equals(startSeekingNode)) {
+            return false;
+        }
+
+        for (final GraphNode parentNode : startSeekingNode.parentNodes()) {
+            if (!isVersionedOrVersionedUpstream(parentNode)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isVersionedOrVersionedUpstream(final GraphNode startSeekingNode) {
+        if (startSeekingNode.isOutputVersioned().isPresent()) {
+            return startSeekingNode.isOutputVersioned().get();
+        }
+
+        return isVersionedUpstream(startSeekingNode);
     }
 
     private GraphNode findParentNodeMatching(final GraphNode startSeekingNode,

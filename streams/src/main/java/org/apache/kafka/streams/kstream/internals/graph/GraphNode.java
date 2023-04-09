@@ -18,6 +18,7 @@
 package org.apache.kafka.streams.kstream.internals.graph;
 
 
+import java.util.Optional;
 import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder;
 
 import java.util.Arrays;
@@ -34,6 +35,7 @@ public abstract class GraphNode {
     private boolean mergeNode;
     private Integer buildPriority;
     private boolean hasWrittenToTopology = false;
+    private Optional<Boolean> outputVersioned = Optional.empty();
 
     public GraphNode(final String nodeName) {
         this.nodeName = nodeName;
@@ -125,6 +127,14 @@ public abstract class GraphNode {
 
     public void setHasWrittenToTopology(final boolean hasWrittenToTopology) {
         this.hasWrittenToTopology = hasWrittenToTopology;
+    }
+
+    public Optional<Boolean> isOutputVersioned() {
+        return outputVersioned;
+    }
+
+    public void setOutputVersioned(final boolean outputVersioned) {
+        this.outputVersioned = Optional.of(outputVersioned);
     }
 
     @Override

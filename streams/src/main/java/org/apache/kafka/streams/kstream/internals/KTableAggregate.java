@@ -36,6 +36,7 @@ public class KTableAggregate<KIn, VIn, VAgg> implements
     private final Aggregator<? super KIn, ? super VIn, VAgg> remove;
 
     private boolean sendOldValues = false;
+    private boolean useVersionedSemantics = false;
 
     KTableAggregate(final String storeName,
                     final Initializer<VAgg> initializer,
@@ -45,6 +46,10 @@ public class KTableAggregate<KIn, VIn, VAgg> implements
         this.initializer = initializer;
         this.add = add;
         this.remove = remove;
+    }
+
+    public void setUseVersionedSemantics(final boolean useVersionedSemantics) {
+        this.useVersionedSemantics = useVersionedSemantics;
     }
 
     @Override
@@ -82,6 +87,10 @@ public class KTableAggregate<KIn, VIn, VAgg> implements
             // the keys should never be null
             if (record.key() == null) {
                 throw new StreamsException("Record key for KTable aggregate operator with state " + storeName + " should not be null.");
+            }
+
+            if (useVersionedSemantics) {
+                // TODO(vxia): skip if out-of-order
             }
 
             final ValueAndTimestamp<VAgg> oldAggAndTimestamp = store.get(record.key());
